@@ -1,6 +1,6 @@
-(ns gregor.details.protocols.common-functions)
+(ns gregor.details.protocols.shared)
 
-(defprotocol CommonFunctionsProtocol
+(defprotocol SharedProtocol
   "Protocal for shared functionality between consumer and producer"
   (partitions-for [this topic]
     "Protocol to retrive partition information for a given topic

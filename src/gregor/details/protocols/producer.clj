@@ -10,10 +10,4 @@
 
      `:partition` is not required")
   (flush! [this]
-    "Ensure that produced messages are flushed to their specified topics.")
-  (init-transactions! [this]
-    "https://kafka.apache.org/0110/javadoc/org/apache/kafka/clients/producer/KafkaProducer.html#initTransactions()")
-  (begin-transaction! [this]
-    "https://kafka.apache.org/0110/javadoc/org/apache/kafka/clients/producer/KafkaProducer.html#beginTransaction()")
-  (commit-transaction! [this]
-    "https://kafka.apache.org/0110/javadoc/org/apache/kafka/clients/producer/KafkaProducer.html#commitTransaction()"))
+    "Ensure that produced messages are flushed to their specified topics."))

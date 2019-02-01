@@ -27,13 +27,7 @@
     (send! [_ record]
       (.send producer (data->record record)))
     (flush! [_]
-      (.flush producer))
-    (init-transactions! [_]
-      (.initTransactions producer))
-    (begin-transaction! [_]
-      (.beginTransaction producer))
-    (commit-transaction! [_]
-      (.commitTransaction producer))))
+      (.flush producer))))
 
 (defn make-producer
   "Create a producer from a configuration"

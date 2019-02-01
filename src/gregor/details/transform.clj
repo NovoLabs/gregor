@@ -1,7 +1,13 @@
 (ns gregor.details.transform
   (:import java.util.Map
            (org.apache.kafka.common PartitionInfo
-                                    Node)))
+                                    Node)
+           org.apache.kafka.common.KafkaException
+           (org.apache.kafka.clients.producer RecordMetadata
+                                              ProducerRecord)
+           (org.apache.kafka.common.errors InterruptException
+                                           SerializationException
+                                           TimeoutException)))
 
 (defn ^Map opts->props
   "Kafka configuration requres a map of string to string.
@@ -19,11 +25,12 @@
 (defn partition-info->data
   "Convert an instance of `PartitionInfo` into a map"
   [^PartitionInfo pi]
-  {:isr       (mapv node->data (.inSyncReplicas pi))
-   :leader    (node->data (.leader pi))
+  {:type :partition-info
+   :isr (mapv node->data (.inSyncReplicas pi))
+   :leader (node->data (.leader pi))
    :partition (long (.partition pi))
-   :replicas  (mapv node->data (.replicas pi))
-   :topic     (.topic pi)})
+   :replicas (mapv node->data (.replicas pi))
+   :topic (.topic pi)})
 
 (defn record-metadata->map
   "Convert an instance of `RecordMetadata` to a map"

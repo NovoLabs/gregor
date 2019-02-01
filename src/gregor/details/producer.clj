@@ -5,13 +5,7 @@
             [gregor.details.serializer :refer [->serializer]])
   (:import java.util.concurrent.TimeUnit
            java.lang.Exception
-           (org.apache.kafka.clients.producer KafkaProducer
-                                              ProducerRecord
-                                              RecordMetadata)
-           org.apache.kafka.common.KafkaException
-           (org.apache.kafka.common.errors InterruptException
-                                           SerializationException
-                                           TimeoutException)))
+           org.apache.kafka.clients.producer.KafkaProducer))
 
 (defn reify-producer-protocol
   "Creates a reified implementation of a producer, which includes ProducerProtocol and CommonFunctionsProtocol"

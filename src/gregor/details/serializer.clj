@@ -44,7 +44,6 @@
 (defn ^Serializer ->serializer
   "Map symbolic keyword to an actual serializer"
   [serializer-id]
-  (if (keyword? serializer-id)
-    (if-let [serializer (serializers serializer-id)]
-      (serializer)
-      (throw (ex-info "unknown serializer" {:serializer serializer-id})))))
+  (if-let [serializer-creator (serializers serializer-id)]
+    (serializer-creator)
+    (throw (ex-info "unknown serializer" {:serializer serializer-id}))))

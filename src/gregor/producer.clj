@@ -24,10 +24,10 @@
     (let [response (prod/send! driver message)]
       (when ()
         (->> @response
-             t/record-metadata->map
+             t/record-metadata->data
              (a/>! out))))
     (catch Exception e
-      (->> (t/exception->map e)
+      (->> (t/exception->data e)
            (a/>! out)))))
 
 (defn input-loop

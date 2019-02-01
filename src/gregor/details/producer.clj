@@ -1,30 +1,21 @@
 (ns gregor.details.producer
-  (:require [gregor.details.protocols.producer :as producer-protocol]
-            [gregor.details.protocols.common-functions :as common-functions-protocol]
-            [gregor.details.shared :refer [opts->props]]
+  (:require [gregor.details.protocols.producer :refer [ProducerProtocol]]
+            [gregor.details.protocols.shared :refer [SharedProtocol]]
+            [gregor.details.shared :refer [opts->props partition-info->data]]
             [gregor.details.serializer :refer [->serializer]])
   (:import java.util.concurrent.TimeUnit
            java.lang.Exception
            (org.apache.kafka.clients.producer KafkaProducer
                                               ProducerRecord
-                                              RecordsMetadata)
-           (org.apache.kafka.common Node
-                                    PartitionInfo)
+                                              RecordMetadata)
+           org.apache.kafka.common.KafkaException
            (org.apache.kafka.common.errors InterruptException
                                            SerializationException
-                                           TimeoutException
-                                           KafkaException)))
-
-(defn node->data
-  "Convert an instance of `Node` into a map"
-  [^Node n]
-  {:host (.host n)
-   :id   (.id n)
-   :port (long (.port n))})
+                                           TimeoutException)))
 
 (defn record-metadata->map
   "Convert an instance of `RecordMetadata` to a map"
-  [^RecordMetadata record-matadata]
+  [^RecordMetadata record-metadata]
   {:type :record-metadata
    :checksum (.checksum record-metadata)
    :offset (.offset record-metadata)
@@ -46,32 +37,22 @@
    :stack-trace (->> (.getStackTrace e) seq (into []))
    :message (.getMessage e)})
 
-(defn partition-info->data
-  "Convert an instance of `PartitionInfo` into a map"
-  [^PartitionInfo pi]
-  {:isr       (mapv node->data (.inSyncReplicas pi))
-   :leader    (node->data (.leader pi))
-   :partition (long (.partition pi))
-   :replicas  (mapv node->data (.replicas pi))
-   :topic     (.topic pi)})
-
 (defn ->record
   "Build a `ProducerRecord` object from a clojure map.  No-Op if `payload` is already a `ProducerRecord`"
-  [{:keys [partition key value]}]
-  (let [topic (some-> payload :topic name str)]
+  [{:keys [partition key value topic]}]
+  (let [topic (some-> topic name str)]
     (cond
       (nil? topic)
-        (throw (ex-info "`:topic` is a required parameter" {:partition partition :key key :topic topic}))
+        (throw (ex-info "`:topic` is a required parameter" {:key key}))
 
       (or (nil? value) (empty? value))
-        (throw (ex-info "`:value` is required and must not be empty"
-                        {:partition partition :key key :topic topic}))
+        (throw (ex-info "`:value` is required and must not be empty" {:key key :topic topic}))
       
       (and key partition)
         (ProducerRecord. str (int partition) key value)
 
       key
-        (ProducerRecord. str key value)
+        (ProducerRecord. topic key value)
 
       :else
         (ProducerRecord. topic value))))
@@ -82,7 +63,7 @@
   ;; Since we are capturing the `producer` object in `reify`, we us the `_` place holder for the `this` pointer
   ;; as it is unnecessary to perform the work
   (reify
-    CommonFunctionsProtocol
+    SharedProtocol
     (close! [_]
       (.close producer))
     (close! [_ timeout]
@@ -95,8 +76,6 @@
     ProducerProtocol
     (send! [_ record]
       (.send producer (->record record)))
-    (send! [_ record k v]
-      (.send producer (-> (assoc record :key k :value v) ->record)))
     (flush! [_]
       (.flush producer))
     (init-transactions! [_]
@@ -107,19 +86,13 @@
       (.commitTransaction producer))))
 
 (defn make-producer
-  "Create a producer from a configuration.  The configuration options are as follows:
-
-   `:gregor/key-serializer`: One of the following, indicating which serializer to use for keys:
-                             `:edn`, `string`, `json`, `keyword`
-   `:gregor/value-serializer`: Same as `:gregor/key-serializer` except it is used to serialize values
-
-   All other configuration options should be key-value pairs, which will be converted to a
-   property map and passed into the Kafka Java client as configuration options.  For example:
-
-   `:bootstrap.servers` \"localhost:9092\"
-   `:max.poll.records` 1000"
-  [{:keys [gregor/key-serializer gregor/value-serializer] :as config}]
+  "Create a producer from a configuration"
+  [{:keys [gregor.producer/key-serializer
+           gregor.producer/value-serializer
+           gregor.producer/kafka-configuration]
+    :or {key-serializer (->serializer :edn) value-serializer (->serializer :edn)}
+    :as config}]
   (let [config (dissoc config :gregor/key-serializer :gregor/value-serializer)]
-    (reify-producer-protocol (KafkaProducer. (opts->props config)
+    (reify-producer-protocol (KafkaProducer. (opts->props kafka-configuration)
                                              (->serializer key-serializer)
                                              (->serializer value-serializer)))))

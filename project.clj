@@ -12,9 +12,10 @@
                  [cheshire "5.8.1"]
                  [environ "1.1.0"]]
 
-  :profiles {:dev {:aot :all
-                   :dependencies [[environ "1.1.0"]]
+  :profiles {:dev {:dependencies [[environ "1.1.0"]]
                    :env {:gregor-kafka-servers "localhost:9092"}}
 
              :test {:dependencies [[environ "1.1.0"]]
-                    :env {:gregor-kafka-servers "localhost:9092"}}})
+                    :env {:gregor-kafka-servers "localhost:9092"}}
+
+             :uberjar {:aot :all}})

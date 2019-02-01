@@ -1,5 +1,6 @@
 (ns gregor.producer
-  (:require [gregor.details.producer :as impl]
+  (:require [gregor.details.producer :refer [make-producer]]
+            [gregor.details.transform :as t]
             [gregor.details.protocols.producer :as prod]
             [gregor.details.protocols.shared :as shared]
             [clojure.core.async :as a]))
@@ -23,10 +24,10 @@
     (let [response (prod/send! driver message)]
       (when ()
         (->> @response
-             impl/record-metadata->map
+             t/record-metadata->map
              (a/>! out))))
     (catch Exception e
-      (->> (impl/exception->map e)
+      (->> (t/exception->map e)
            (a/>! out)))))
 
 (defn input-loop
@@ -43,7 +44,7 @@
 
 (defn control-loop
   "Starts the loop that process control commands from the user"
-  [in out ctl driver {:keys [::output-policy] :or {output-policy :no-output}}]
+  [in out ctl driver]
   (a/go-loop []
     (when-let [{:keys [op topic] :as payload} (a/<! ctl)]
       (cond
@@ -55,29 +56,25 @@
           (let [ctl-msg {:status :success :op :close}]
             (a/close! in)
             (a/close! ctl)
-            (when (#{:all :errors-and-control} output-policy)
-              (a/>! out ctl-msg)) ;; send response before closing output channel
             (when out
+              (a/>! out ctl-msg) ;; send response before closing output channel
               (a/close! out)))
 
         (= op :flush)
           (let [ctl-msg {:status :success :op :flush}]
             (prod/flush! driver)
-            (when (#{:all :errors-and-control} output-policy)
+            (when out
               (a/>! out ctl-msg)))
 
-        (= op :partitions-for)
+        (and out (= op :partitions-for))
           (if topic
-            (when (#{:all :errors-and-control} output-policy)
-              (a/>! out {:op :partitions-for :topic topic :partitions (shared/partitions-for driver topic)}))
-            (when out
-              (a/>! out {:status :error :op :partitions-for :type :topic-missing
-                         :reason "`topic` is required by `partitions-for` operation"})))
-        
-        :else
-          (when out
-            (a/>! out {:status :error :type :bad-control-operation
-                       :payload payload :reason (str op " is not a valid control operation")})))
+            (a/>! out {:op :partitions-for :topic topic :partitions (shared/partitions-for driver topic)})
+            (a/>! out {:status :error :op :partitions-for :type :topic-missing
+                       :reason "`topic` is required by `partitions-for` operation"}))
+
+        out
+          (a/>! out {:status :error :type :bad-control-operation
+                     :payload payload :reason (str op " is not a valid control operation")}))
 
       (when (not= op :close)
         (recur)))))
@@ -130,7 +127,7 @@
   [{:keys [::input-buffer ::output-buffer ::timeout ::output-policy]
     :or {input-buffer default-input-buffer output-buffer default-output-buffer timeout default-timeout}
     :as config}]
-  (let [p (impl/make-producer config)
+  (let [p (make-producer config)
         in (a/chan input-buffer)
         ctl (a/chan input-buffer)
         out-ctl (when (ctl-out output-policy) (a/chan output-buffer))

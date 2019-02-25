@@ -1,6 +1,6 @@
 (ns gregor.producer
   (:require [gregor.details.producer :refer [make-producer]]
-            [gregor.details.transform :as t]
+            [gregor.details.transform :as xform]
             [gregor.details.protocols.producer :as prod]
             [gregor.details.protocols.shared :as shared]
             [clojure.core.async :as a]))
@@ -22,12 +22,14 @@
   [out driver message {:keys [::output-policy] :or {output-policy :no-output}}]
   (try
     (let [response (prod/send! driver message)]
-      (when ()
+      (when out
         (->> @response
-             t/record-metadata->data
+             xform/record-metadata->data
+             (xform/data->event :notification)
              (a/>! out))))
     (catch Exception e
-      (->> (t/exception->data e)
+      (->> (xform/exception->data e)
+           (xform/data->event :error)
            (a/>! out)))))
 
 (defn input-loop
@@ -37,10 +39,12 @@
     (if-let [message (a/<! in)]
       (do (process-input out driver message)
           (recur))
-      (do (a/close! out)
-          (if timeout
-            (shared/close! driver timeout)
-            (shared/close! driver))))))
+      (do
+        (when out
+          (a/close! out))
+        (if timeout
+          (shared/close! driver timeout)
+          (shared/close! driver))))))
 
 (defn control-loop
   "Starts the loop that process control commands from the user"
@@ -53,7 +57,7 @@
                      :reason "`op` key is missing, no operation specified"})
 
         (= op :close)
-          (let [ctl-msg {:status :success :op :close}]
+          (let [ctl-msg (->> (assoc payload :name :close) (xform/data->event :notification))]
             (a/close! in)
             (a/close! ctl)
             (when out
@@ -61,20 +65,20 @@
               (a/close! out)))
 
         (= op :flush)
-          (let [ctl-msg {:status :success :op :flush}]
+          (let [ctl-msg (->> (assoc payload :name :flush) (xform/data->event :notification))]
             (prod/flush! driver)
             (when out
               (a/>! out ctl-msg)))
 
         (and out (= op :partitions-for))
           (if topic
-            (a/>! out {:op :partitions-for :topic topic :partitions (shared/partitions-for driver topic)})
-            (a/>! out {:status :error :op :partitions-for :type :topic-missing
-                       :reason "`topic` is required by `partitions-for` operation"}))
+            (a/>! out (->> (shared/partitions-for driver topic) (merge payload) (xform/data->event :notification)))
+            (a/>! out (->> {:name :missing-topic :messsage "`topic` is required by `partitions-for` operation"}
+                           (xform/data->event :error))))
 
         out
-          (a/>! out {:status :error :type :bad-control-operation
-                     :payload payload :reason (str op " is not a valid control operation")}))
+          (a/>! out (->> {:name :invalid-control-operation :op op :message (str op " is not a valid control operation")}
+                         (xform/data->event :error))))
 
       (when (not= op :close)
         (recur)))))

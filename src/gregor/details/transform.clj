@@ -31,7 +31,7 @@
 (defn partition-info->data
   "Convert an instance of `PartitionInfo` into a map"
   [^PartitionInfo pi]
-  {:type :partition-info
+  {:name :partition-info
    :isr (mapv node->data (.inSyncReplicas pi))
    :leader (node->data (.leader pi))
    :partition (long (.partition pi))
@@ -41,7 +41,7 @@
 (defn record-metadata->data
   "Convert an instance of `RecordMetadata` to a map"
   [^RecordMetadata record-metadata]
-  {:type :record-metadata
+  {:name :record-metadata
    :checksum (.checksum record-metadata)
    :offset (.offset record-metadata)
    :partition (.partition record-metadata)
@@ -52,8 +52,7 @@
 (defn exception->data
   "Convert a known exception to a map"
   [^Exception e]
-  {:type :exception
-   :name (cond
+  {:name (cond
            (instance? InterruptException e) :interrupt
            (instance? SerializationException e) :serialization
            (instance? TimeoutException e) :timeout
@@ -97,14 +96,8 @@
   [^ConsumerRecords crs]
   (let [->d  (fn [^TopicPartition p] [(.topic p) (.partition p)])
         ps   (.partitions crs)
-        ts   (set (for [^TopicPartition p ps] (.topic p)))
-        by-p (into {} (for [^TopicPartition p ps] [(->d p) (mapv consumer-record->data (.records crs p))]))
-        by-t (into {} (for [^String t ts] [t (mapv consumer-record->data (.records crs t))]))]
-    {:partitions   (vec (for [^TopicPartition p ps] [(.topic p) (.partition p)]))
-     :topics       ts
-     :count        (.count crs)
-     :by-topic     by-t
-     :by-partition by-p}))
+        by-p (into {} (for [^TopicPartition p ps] [(->d p) (mapv consumer-record->data (.records crs p))]))]
+    {:by-partition by-p}))
 
 (defn ^Collection data->topics
   "Converts a topic or list of topics into a Collection of topics that KafkaConsumer understands"
@@ -135,3 +128,8 @@
   "Yield a OffsetAndMetadata object from a clojure map."
   [{:keys [offset metadata]}]
   (OffsetAndMetadata. offset metadata))
+
+(defn data->event
+  "Adds event information to the specified data (map)"
+  [event-type data]
+  (assoc data :event-type event-type))

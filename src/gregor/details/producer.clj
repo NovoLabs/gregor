@@ -36,9 +36,7 @@
   [{:keys [gregor.producer/key-serializer
            gregor.producer/value-serializer
            gregor.producer/kafka-configuration]
-    :or {key-serializer (->serializer :edn) value-serializer (->serializer :edn)}
-    :as config}]
-  (let [config (dissoc config :gregor/key-serializer :gregor/value-serializer)]
-    (reify-producer-protocol (KafkaProducer. (opts->props kafka-configuration)
-                                             (->serializer key-serializer)
-                                             (->serializer value-serializer)))))
+    :or {key-serializer :edn value-serializer :edn}}]
+  (reify-producer-protocol (KafkaProducer. (opts->props kafka-configuration)
+                                           (->serializer key-serializer)
+                                           (->serializer value-serializer))))

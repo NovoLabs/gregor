@@ -51,3 +51,13 @@
 
     (wake-up! [_]
       (.wakeup consumer))))
+
+(defn make-consumer
+  "Create a consumer from a configuration"
+  [{:keys [gregor.consumer/key-deserializer
+           gregor.consumer/value-deserializer
+           gregor.consumer/kafka-configuration]}
+   :or {key-deserializer :edn value-deserializer :edn}]
+  (reify-consumer-protocol (KafkaConsumer. (xform/opts->props config)
+                                           (->deserializer key-deserializer)
+                                           (->deserializer value-deserializer))))

@@ -1,144 +1,153 @@
 (ns gregor.producer
   (:require [gregor.details.producer :refer [make-producer]]
             [gregor.details.transform :as xform]
-            [gregor.details.protocols.producer :as prod]
-            [gregor.details.protocols.shared :as shared]
+            [gregor.details.protocols.producer :as producer]
+            [gregor.defaults :refer [default-input-buffer default-output-buffer default-timeout]]
+            [gregor.output-policy :refer [data-output? control-output? error-output? any-output?]]
             [clojure.core.async :as a]))
-
-(def default-input-buffer
-  "Default number of messages on input channel"
-  10)
-
-(def default-output-buffer
-  "Default number of messages on the output channel"
-  100)
-
-(def default-timeout
-  "Default timeout in milli-seconds"
-  100)
 
 (defn process-input
   "Sends `message` to the kafka `producer`, returning results via the `out` channel"
-  [out driver message {:keys [::output-policy] :or {output-policy :no-output}}]
+  [message driver output-policy]
   (try
-    (let [response (prod/send! driver message)]
-      (when out
+    (let [response (producer/send! driver message)]
+      (when (data-output? output-policy)
         (->> @response
              xform/record-metadata->data
-             (xform/data->event :notification)
-             (a/>! out))))
+             (xform/->event :data))))
     (catch Exception e
-      (->> (xform/exception->data e)
-           (xform/data->event :error)
-           (a/>! out)))))
+      (when (error-output? output-policy)
+        (->> (xform/exception->data e)
+             (xform/->event :error))))))
 
 (defn input-loop
   "Starts the loop that processes input, waiting for the user to send input on `in` channel"
-  [in out driver timeout]
+  [{:keys [in-ch out-ch output-policy driver timeout] :as context}]
   (a/go-loop []
-    (if-let [message (a/<! in)]
-      (do (process-input out driver message)
-          (recur))
-      (do
-        (when out
-          (a/close! out))
-        (if timeout
-          (shared/close! driver timeout)
-          (shared/close! driver))))))
+    (if-let [message (a/<! in-ch)]
+      (let [result (process-input message driver output-policy)]
+        (when (and out-ch result)
+          (a/>! out-ch result))
+        (recur))
+      (producer/close! driver timeout))))
 
 (defn control-loop
   "Starts the loop that process control commands from the user"
-  [in out ctl driver]
+  [{:keys [in-ch ctl-ch out-ch driver output-policy]}]
   (a/go-loop []
-    (when-let [{:keys [op topic] :as payload} (a/<! ctl)]
+    (when-let [{:keys [op topic] :as payload} (a/<! ctl-ch)]
       (cond
-        (and (nil? op) out)
-          (a/>! out {:status :error :type :missing-control-operation
-                     :reason "`op` key is missing, no operation specified"})
+        (and (nil? op) (error-output? output-policy))
+          (a/>! out-ch (-> {:reason :missing-control-operation :description "`op` key is missing, no operation specified"}
+                           (xform/->event :error)))
 
         (= op :close)
-          (let [ctl-msg (->> (assoc payload :name :close) (xform/data->event :notification))]
-            (a/close! in)
-            (a/close! ctl)
-            (when out
-              (a/>! out ctl-msg) ;; send response before closing output channel
-              (a/close! out)))
+          (let [ctl-msg (xform/->event :control payload)]
+            (a/close! in-ch)
+            (a/close! ctl-ch)
+            (when (control-output? output-policy)
+              (a/>! out-ch ctl-msg)
+              (a/>! out-ch (xform/->event :eof))) ;; send response before closing output channel            
+            (when out-ch
+              (a/close! out-ch)))
 
         (= op :flush)
-          (let [ctl-msg (->> (assoc payload :name :flush) (xform/data->event :notification))]
-            (prod/flush! driver)
-            (when out
-              (a/>! out ctl-msg)))
+          (let [ctl-msg (xform/->event :control payload)]
+            (producer/flush! driver)
+            (when (control-output? output-policy)
+              (a/>! out-ch ctl-msg)))
 
-        (and out (= op :partitions-for))
+        (and (control-output? output-policy) (= op :partitions-for))
           (if topic
-            (a/>! out (->> (shared/partitions-for driver topic) (merge payload) (xform/data->event :notification)))
-            (a/>! out (->> {:name :missing-topic :messsage "`topic` is required by `partitions-for` operation"}
-                           (xform/data->event :error))))
+            (a/>! out-ch (->> (producer/partitions-for driver topic) (xform/->event :control)))
+            (when (error-output? output-policy)
+              (a/>! out-ch (->> {:reason :missing-topic :description "`topic` is required by `partitions-for` operation"}
+                                (xform/->event :error)))))
 
-        out
-          (a/>! out (->> {:name :invalid-control-operation :op op :message (str op " is not a valid control operation")}
-                         (xform/data->event :error))))
+        (error-output? output-policy)
+          (a/>! out-ch (->> {:name :invalid-control-operation :op op :message (str op " is not a valid control operation")}
+                            (xform/->event :error))))
 
       (when (not= op :close)
         (recur)))))
 
-(def ctl-out #{:control :both})
-(def prod-out #{:producer :both})
+(defn create-context
+  "Builds context map containing all the driver, various channels and configuration options"
+  [{:keys [input-buffer output-buffer output-policy timeout transducer]
+    :or {input-buffer default-input-buffer
+         output-buffer default-output-buffer
+         timeout default-timeout
+         output-policy #{}}
+    :as config}]
+  (let [ctl-out-ch (when (control-output? output-policy) (a/chan output-buffer))
+        prod-out-ch (when (or (data-output? output-policy) (error-output? output-policy)) (a/chan output-buffer))]
+    {:driver (make-producer config)
+     :in-ch (if transducer (a/chan input-buffer transducer) (a/chan input-buffer))
+     :ctl-ch (a/chan input-buffer)
+     :ctl-out-ch ctl-out-ch
+     :prod-out-ch prod-out-ch
+     :out-ch (some-> (filter identity [ctl-out-ch prod-out-ch]) not-empty vec (a/merge output-buffer))
+     :output-policy output-policy
+     :timeout timeout}))
 
 (defn create
   "Create a producer, returning a map that contains 3 channels:
 
-   `:gregor.producer/in-ch`  - Input channel used to send messages to the producer. 
+   `:in-ch`  - Input channel used to send messages to the producer. 
 
-   `:gregor.producer/ctl-ch` - Control channel used to manage the producer connection
+   `:ctl-ch` - Control channel used to manage the producer connection
 
-   `:gregor.producer/out-ch` - Output channel used to receive messages from the Kafka producer and controller.
-                               This channel will be `nil` unless an `output-policy` is specified.
+   `:out-ch` - Output channel used to receive messages from the Kafka producer and controller.
+               This channel will be `nil` unless a non-empty `output-policy` set is specified.
 
    Configuration options:
 
-   `:gregor.producer/output-policy`: Policy for handling return value from KafkaProducer::send
-                                     Valid output policies are `:controller`, `:producer` or `:both`
-                                     If no output policy is specified, output from the producer and
-                                     controller will be discarded.
-  
-   `:gregor.producer/close-timeout`: time to wait for queued messages to send when closing the producer
-                                     `close-timeout` is in milliseconds
-  
-   `:gregor.producer/key-serializer`: Serializer to use for key serialization, default is `:edn`.
-                                      Valid serializers are `:edn`, `:string`, `:json` and `:keyword`
-  
-   `:gregor.producer/value-serializer`: Serializer to use for value serialization, default is `:edn`.
-                                        Valid serializers are `:edn`, `:string` and `:json`
-  
-   `:gregor.producer/input-buffer`: Buffer size of `:gregor.producer/in-ch`
-  
-   `:gregor.producer/output-buffer`: Buffer size of `:gregor.producer/out-ch`
+   `:output-policy`: A set containing the output sources that should be returned via the `out-ch`.
+                     Valid options include:
 
-   `:gregor.producer/kafka-configuration`: Map containing kafka producer configuration settings.  This
-                                           map will be converted into key/value properties and passed
-                                           directly to the KafkaProducer object.
+                     `:control`: Output from control operations
+                     `:error`: Any exceptions or errors that occur
+                     `:data`: Response from kafka producer after sending a message
+                     
+                     The Kafka Java interface returns each of this as a Java object. Gregor converts each
+                     to pure data (i.e. a map).
+  
+   `:timeout`: time to wait, in milliseconds, for queued messages to send when closing the producer
+  
+   `:key-serializer`: Serializer to use for key serialization, default is `:edn`.
+                      Valid serializers are `:edn`, `:string`, `:json` and `:keyword`
+  
+   `:value-serializer`: Serializer to use for value serialization, default is `:edn`.
+                        Valid serializers are `:edn`, `:string` and `:json`
+  
+   `:input-buffer`: Buffer size of `:in-ch` and `ctl-ch`, default is 10
+  
+   `:output-buffer`: Buffer size of `:out-ch`, default is 100
 
-   Example Kafka Configuration:
+   `:kafka-configuration`: Map containing kafka producer configuration settings.  This map will be converted
+                           into key/value properties and passed directly to the KafkaProducer object.
 
-   `{ :gregor.producer/kafka-configuration { :bootstrap.servers \"localhost:9092\"
-                                             :max.poll.recordss 1000 }}`
+   `:transducer`: Transformation function to be applied to all data received via `in-ch` channel, prior to being
+                  posted to Kafka.
 
-   All key value pairs in `:gregor.producer/kafka-configuration` will be converted and inserted into a
-   property map and passed into the Kafka Java client as configuration options."
+   Example Configuration:
 
-  [{:keys [::input-buffer ::output-buffer ::timeout ::output-policy]
-    :or {input-buffer default-input-buffer output-buffer default-output-buffer timeout default-timeout}
-    :as config}]
-  (let [p (make-producer config)
-        in (a/chan input-buffer)
-        ctl (a/chan input-buffer)
-        out-ctl (when (ctl-out output-policy) (a/chan output-buffer))
-        out-prod (when (prod-out output-policy) (a/chan output-buffer))
-        out (some-> (filter identity [out-ctl out-prod]) not-empty vec (a/merge output-buffer))]
-    (input-loop in out-prod p config)
-    (control-loop ctl out-ctl p config)
-    (if out
-      {::in-ch in ::out-ch out ::control-ch ctl}
-      {::in-ch in ::control-ch ctl})))
+   `{:kafka-configuration {:bootstrap.servers \"localhost:9092\"
+                           :max.poll.recordss 1000}
+     :output-policy #{:control :error}
+     :key-serializer :string
+     :value-serializer :json
+     :input-buffer 20
+     :output-buffer 50
+     :timeout 100}`
+
+   All key value pairs in `:kafka-configuration` will be converted and inserted into a property map and
+   passed into the Kafka Java client as configuration options."
+
+  [config]
+  (let [{:keys [output-policy] :as context} (create-context config)]
+    (input-loop context)
+    (control-loop context)
+    (if (any-output? output-policy)
+      (select-keys context [:in-ch :out-ch :ctl-ch])
+      (select-keys context [:in-ch :ctl-ch]))))

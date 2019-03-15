@@ -1,5 +1,7 @@
 (ns gregor.details.transform
-  (:import (java.util Map
+  (:import (java.lang IllegalStateException
+                      IllegalArgumentException)
+           (java.util Map
                       Collection)
            java.util.regex.Pattern
            org.apache.kafka.clients.consumer.OffsetAndMetadata
@@ -24,14 +26,15 @@
 (defn node->data
   "Convert an instance of `Node` into a map"
   [^Node n]
-  {:host (.host n)
+  {:type :node
+   :host (.host n)
    :id   (.id n)
    :port (long (.port n))})
 
 (defn partition-info->data
   "Convert an instance of `PartitionInfo` into a map"
   [^PartitionInfo pi]
-  {:name :partition-info
+  {:type :partition-info
    :isr (mapv node->data (.inSyncReplicas pi))
    :leader (node->data (.leader pi))
    :partition (long (.partition pi))
@@ -41,7 +44,7 @@
 (defn record-metadata->data
   "Convert an instance of `RecordMetadata` to a map"
   [^RecordMetadata record-metadata]
-  {:name :record-metadata
+  {:type :record-metadata
    :checksum (.checksum record-metadata)
    :offset (.offset record-metadata)
    :partition (.partition record-metadata)
@@ -52,12 +55,14 @@
 (defn exception->data
   "Convert a known exception to a map"
   [^Exception e]
-  {:name (cond
-           (instance? InterruptException e) :interrupt
-           (instance? SerializationException e) :serialization
-           (instance? TimeoutException e) :timeout
-           (instance? KafkaException e) :kafka
-           :else :unknown)
+  {:type (cond
+           (instance? InterruptException e) :interrupt-exception
+           (instance? SerializationException e) :serialization-exception
+           (instance? TimeoutException e) :timeout-exception
+           (instance? KafkaException e) :kafka-exception
+           (instance? IllegalStateException e) :illegal-state-exception
+           (instance? IllegalArgumentException e) :illegal-argument-exception
+           :else :unknown-exception)
    :stack-trace (->> (.getStackTrace e) seq (into []))
    :message (.getMessage e)})
 
@@ -84,7 +89,8 @@
 (defn consumer-record->data
   "Yield a clojure representation of a consumer record"
   [^ConsumerRecord cr]
-  {:key       (.key cr)
+  {:type      :consumer-record
+   :key       (.key cr)
    :offset    (.offset cr)
    :partition (.partition cr)
    :timestamp (.timestamp cr)
@@ -94,10 +100,9 @@
 (defn consumer-records->data
   "Yield the clojure representation of topic"
   [^ConsumerRecords crs]
-  (let [->d  (fn [^TopicPartition p] [(.topic p) (.partition p)])
-        ps   (.partitions crs)
-        by-p (into {} (for [^TopicPartition p ps] [(->d p) (mapv consumer-record->data (.records crs p))]))]
-    {:by-partition by-p}))
+  (let [partitions (.partitions crs)]
+    (-> (for [^TopicPartition p partitions] (mapv consumer-record->data (.records crs p)))
+        flatten)))
 
 (defn ^Collection data->topics
   "Converts a topic or list of topics into a Collection of topics that KafkaConsumer understands"
@@ -119,17 +124,9 @@
       (throw (ex-info "topics argument must be a string, keyword, regex or list of strings and/or keywords"
                       {:topics topics}))))
 
-(defn ^TopicPartition data->topic-partition
-  "Yield a TopicPartition object from a clojure map."
-  [{:keys [topic partition]}]
-  (TopicPartition. (name topic) (int partition)))
-
-(defn ^OffsetAndMetadata data->offset-metadata
-  "Yield a OffsetAndMetadata object from a clojure map."
-  [{:keys [offset metadata]}]
-  (OffsetAndMetadata. offset metadata))
-
-(defn data->event
+(defn ->event
   "Adds event information to the specified data (map)"
-  [event-type data]
-  (assoc data :event-type event-type))
+  ([event]
+   (->event event {}))
+  ([event data]
+   (assoc data :event event)))

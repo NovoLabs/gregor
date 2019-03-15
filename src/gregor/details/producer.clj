@@ -1,6 +1,5 @@
 (ns gregor.details.producer
   (:require [gregor.details.protocols.producer :refer [ProducerProtocol]]
-            [gregor.details.protocols.shared :refer [SharedProtocol]]
             [gregor.details.transform :refer [opts->props partition-info->data data->producer-record]]
             [gregor.details.serializer :refer [->serializer]])
   (:import java.util.concurrent.TimeUnit
@@ -12,9 +11,7 @@
   ;; Since we are capturing the `producer` object in `reify`, we us the `_` place holder for the `this` pointer
   ;; as it is unnecessary to perform the work
   (reify
-    SharedProtocol
-    (close! [_]
-      (.close producer))
+    ProducerProtocol
 
     (close! [_ timeout]
       (if-not (int? timeout)
@@ -22,9 +19,10 @@
         (.close producer (long timeout) TimeUnit/MILLISECONDS)))
 
     (partitions-for [_ topic]
-      (mapv partition-info->data (.partitionsFor producer topic)))
+      (->> (.partitionsFor producer topic)
+           (mapv partition-info->data)
+           (assoc {} :partitions)))
 
-    ProducerProtocol
     (send! [_ record]
       (.send producer (data->producer-record record)))
 
@@ -33,10 +31,7 @@
 
 (defn make-producer
   "Create a producer from a configuration"
-  [{:keys [gregor.producer/key-serializer
-           gregor.producer/value-serializer
-           gregor.producer/kafka-configuration]
-    :or {key-serializer :edn value-serializer :edn}}]
+  [{:keys [key-serializer value-serializer kafka-configuration] :or {key-serializer :edn value-serializer :edn}}]
   (reify-producer-protocol (KafkaProducer. (opts->props kafka-configuration)
                                            (->serializer key-serializer)
                                            (->serializer value-serializer))))

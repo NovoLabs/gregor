@@ -1,6 +1,5 @@
 (ns gregor.details.consumer
   (:require [gregor.details.protocols.consumer :refer [ConsumerProtocol]]
-            [gregor.details.protocols.shared :refer [SharedProtocol]]
             [gregor.details.transform :as xform]
             [gregor.details.deserializer :refer [->deserializer]])
   (:import org.apache.kafka.clients.consumer.KafkaConsumer
@@ -10,9 +9,7 @@
   "Create a reified implementation of a consumer, which includes ConsumerProtocol and SharedProtocol functions"
   [^KafkaConsumer consumer]
   (reify
-    SharedProtocol
-    (close! [_]
-      (.close consumer))
+    ConsumerProtocol
 
     (close! [_ timeout]
       (if-not (int? timeout)
@@ -22,7 +19,6 @@
     (partitions-for [_ topic]
       (mapv xform/partition-info->data (.partitionsFor consumer topic)))
 
-    ConsumerProtocol
     (poll! [_ timeout]
       (xform/consumer-records->data (.poll consumer timeout)))
 
@@ -38,26 +34,12 @@
     (commit! [_]
       (.commitSync consumer))
 
-    (commit! [_ topic-offsets]
-      (.commitSync consumer (->> topic-offsets
-                                 (map (juxt xform/data->topic-partition xform/data->offset-metadata))
-                                 (reduce merge {}))))
-
-    (seek! [_ topic-partition offset]
-      (.seek consumer (xform/data->topic-partition topic-partition) offset))
-
-    (position! [_ topic-partition]
-      (.position consumer (xform/data->topic-partition topic-partition)))
-
-    (wake-up! [_]
+    (wakeup! [_]
       (.wakeup consumer))))
 
 (defn make-consumer
   "Create a consumer from a configuration"
-  [{:keys [gregor.consumer/key-deserializer
-           gregor.consumer/value-deserializer
-           gregor.consumer/kafka-configuration]}
-   :or {key-deserializer :edn value-deserializer :edn}]
-  (reify-consumer-protocol (KafkaConsumer. (xform/opts->props config)
+  [{:keys [key-deserializer value-deserializer kafka-configuration] :or {key-deserializer :edn value-deserializer :edn}}]
+  (reify-consumer-protocol (KafkaConsumer. (xform/opts->props kafka-configuration)
                                            (->deserializer key-deserializer)
                                            (->deserializer value-deserializer))))

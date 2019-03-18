@@ -15,7 +15,8 @@
                                               ConsumerRecords)
            (org.apache.kafka.common.errors InterruptException
                                            SerializationException
-                                           TimeoutException)))
+                                           TimeoutException)
+           (org.apache.kafka.common.record TimestampType)))
 
 (defn ^Map opts->props
   "Kafka configuration requres a map of string to string.
@@ -26,29 +27,39 @@
 (defn node->data
   "Convert an instance of `Node` into a map"
   [^Node n]
-  {:type :node
-   :host (.host n)
-   :id   (.id n)
-   :port (long (.port n))})
+  (merge   {:type :node
+            :host (.host n)
+            :id   (.id n)
+            :port (long (.port n))}
+           (when (.hasRack n)
+             {:rack (.rack n)})))
 
 (defn partition-info->data
   "Convert an instance of `PartitionInfo` into a map"
   [^PartitionInfo pi]
   {:type :partition-info
    :isr (mapv node->data (.inSyncReplicas pi))
+   :offline (mapv node->data (.offlineReplicas pi))
    :leader (node->data (.leader pi))
    :partition (long (.partition pi))
    :replicas (mapv node->data (.replicas pi))
    :topic (.topic pi)})
 
+(defn topic-partition->data
+  "Convert an instance of `TopicPartition` into a map"
+  [^TopicPartition tp]
+  {:type :topic-partition
+   :topic (.topic tp)
+   :partition (.partition tp)})
+
 (defn record-metadata->data
   "Convert an instance of `RecordMetadata` to a map"
   [^RecordMetadata record-metadata]
   {:type :record-metadata
-   :checksum (.checksum record-metadata)
    :offset (.offset record-metadata)
    :partition (.partition record-metadata)
    :serialized-key-size (.serializedKeySize record-metadata)
+   :serialized-value-size (.serializedValueSize record-metadata)
    :timestamp (.timestamp record-metadata)
    :topic (.topic record-metadata)})
 
@@ -66,36 +77,25 @@
    :stack-trace (->> (.getStackTrace e) seq (into []))
    :message (.getMessage e)})
 
-(defn data->producer-record
-  "Build a `ProducerRecord` object from a clojure map.  No-Op if `payload` is already a `ProducerRecord`"
-  [{:keys [partition key value topic]}]
-  (let [topic (some-> topic name str)]
-    (cond
-      (nil? topic)
-        (throw (ex-info "`:topic` is a required parameter" {:key key}))
+(defn timestamp-type->data
+  "Convert an instance of `TimestampType` to a map"
+  [^TimestampType tt]
+  {:type :timestamp-type
+   :name (.name tt)
+   :id (.id tt)})
 
-      (or (nil? value) (empty? value))
-        (throw (ex-info "`:value` is required and must not be empty" {:key key :topic topic}))
-      
-      (and key partition)
-        (ProducerRecord. str (int partition) key value)
-
-      key
-        (ProducerRecord. topic key value)
-
-      :else
-        (ProducerRecord. topic value))))
-
+;; TODO: Add :leader-epoch
+;; TODO: Add support for ConsumerRecord Headers
 (defn consumer-record->data
   "Yield a clojure representation of a consumer record"
   [^ConsumerRecord cr]
-  {:type      :consumer-record
-   :key       (.key cr)
-   :offset    (.offset cr)
+  {:type :consumer-record
+   :key (.key cr)
+   :offset (.offset cr)
    :partition (.partition cr)
    :timestamp (.timestamp cr)
-   :topic     (.topic cr)
-   :value     (.value cr)})
+   :topic (.topic cr)
+   :value (.value cr)})
 
 (defn consumer-records->data
   "Yield the clojure representation of topic"
@@ -103,6 +103,26 @@
   (let [partitions (.partitions crs)]
     (-> (for [^TopicPartition p partitions] (mapv consumer-record->data (.records crs p)))
         flatten)))
+
+(defn data->producer-record
+  "Build a `ProducerRecord` object from a clojure map.  No-Op if `payload` is already a `ProducerRecord`"
+  [{:keys [partition key value topic] :as data}]
+  (let [topic (some-> topic name)]
+    (cond
+      (nil? topic)
+        (throw (ex-info "`:topic` is a required parameter" {}))
+
+      (or (nil? value) (empty? value))
+        (throw (ex-info "`:value` is required and must not be empty" {:topic topic}))
+      
+      (and key partition)
+        (ProducerRecord. topic (int partition) key value)
+
+      key
+        (ProducerRecord. topic key value)
+
+      :else
+        (ProducerRecord. topic value))))
 
 (defn ^Collection data->topics
   "Converts a topic or list of topics into a Collection of topics that KafkaConsumer understands"

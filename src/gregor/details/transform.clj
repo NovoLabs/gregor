@@ -144,9 +144,13 @@
       (throw (ex-info "topics argument must be a string, keyword, regex or list of strings and/or keywords"
                       {:topics topics}))))
 
+(def valid-events #{:data :control :error})
+
 (defn ->event
   "Adds event information to the specified data (map)"
   ([event]
    (->event event {}))
   ([event data]
-   (assoc data :event event)))
+   (if (valid-events event)
+     (assoc data :event event)
+     (throw (ex-info "invalid event" {:event event :valid-events valid-events})))))

@@ -146,12 +146,19 @@
       (is (= (.value producer-record) "value")))
 
     (is (thrown? ExceptionInfo (t/data->producer-record {:topic "gregor.test"})))
-    (is (thrown? ExceptionInfo (t/data->producer-record {:value "value"}))))
+    (is (thrown? ExceptionInfo (t/data->producer-record {:value "value"})))))
 
+(deftest data-to-data
   (testing "data->topics"
     (is (= ["gregor.test"] (t/data->topics :gregor.test)))
     (is (= ["gregor.test"] (t/data->topics "gregor.test")))
     (is (= ["gregor.test" "gregor.test-2"] (t/data->topics [:gregor.test "gregor.test-2"])))
     (is (= java.util.regex.Pattern (class (t/data->topics #"^gregor\..*"))))
     (is (= (str #"^gregor\..*") (str (t/data->topics #"^gregor\..*"))))
-    (is (thrown? ExceptionInfo (t/data->topics {:topic "gregor.test"})))))
+    (is (thrown? ExceptionInfo (t/data->topics {:topic "gregor.test"}))))
+
+  (testing "->event"
+    (is (= {:a 1 :b 2 :event :data} (t/->event :data {:a 1 :b 2})))
+    (is (= {:a 1 :b 2 :event :control} (t/->event :control {:a 1 :b 2})))
+    (is (= {:a 1 :b 2 :event :error}) (t/->event :error {:a 1 :b 2}))
+    (is (thrown? ExceptionInfo (t/->event :foobar {:a 1 :b 2})))))

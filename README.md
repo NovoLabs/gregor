@@ -63,7 +63,7 @@ user> (def ctl-ch (:ctl-ch consumer))
 
 There are a few things going on here which warrant a closer examination.  First, lets look at the configuration map passed to `gregor.consumer/create`:
 
-*`:output-policy`*
+**`:output-policy`**
 
 The value of `:output-policy` should be a set containing the list of events we want published to `out-ch`.  There are three types of events that Gregor publishes:
 

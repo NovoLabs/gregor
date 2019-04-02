@@ -2,7 +2,7 @@
   (:require [gregor.details.consumer :refer [make-consumer]]
             [gregor.details.transform :as xform]
             [gregor.details.protocols.consumer :as consumer]
-            [gregor.defaults :refer [default-input-buffer default-output-buffer default-timeout]]
+            [gregor.defaults :refer [default-output-buffer default-timeout]]
             [gregor.output-policy :refer [data-output? control-output? error-output? any-output?]]
             [clojure.core.async :as a])
   (:import [java.util ConcurrentModificationException]
@@ -15,9 +15,9 @@
 
 (defn safe-poll
   "Polls for data arriving from Kafka, catching appropriate exceptions to dispatch control events"
-  [{:keys [driver timeout output-policy]}]
+  [{:keys [driver timeout output-policy dbg-ch]}]
   (try
-    (->> (consumer/poll! driver timeout)
+    (->> (consumer/poll! driver 2000)
          (map #(xform/->event :data %))
          (assoc {} :data)
          (xform/->event :data))
@@ -26,17 +26,21 @@
       ;; function that is thread safe is `.wakeup` which triggers a wake up exception.  Gregor uses `.wakeup`
       ;; to force the Kafka consumer out of a blocking poll in order to handle a control event.  This call
       ;; is made in the go-loop created by `wakeup-loop` function.
+      (a/>!! dbg-ch "caught WakeupException")
       (xform/->event :control))
     (catch IllegalStateException _
       ;; This exception is thrown when we call `.poll!` without being subscribed to any topics.  We handle it
       ;; here and return it as a control event.  This will allow us to handle control events prior to being
       ;; subscribed to a topic.  Most important, we can handle the control command to `subscribe`.
+      (a/>!! dbg-ch "caught IllegalStateException")
       (xform/->event :control))
     (catch ConcurrentModificationException e
       ;; This should not happen.  If it does, there is a bug in Gregor and we propogate the exception
+      (a/>!! dbg-ch "caugh ConcurrentModificationException")
       (throw e))
     (catch Exception e
       ;; All other exceptions are converted to data and returned
+      (a/>!! dbg-ch "caught Exception")
       (->> (xform/exception->data e)
            (xform/->event :error)))))
 
@@ -52,7 +56,7 @@
   (cond
     (nil? op)
       (when (error-output? output-policy)
-        (->> {:type :missing-control-operation
+        (->> {:type-name :missing-control-operation
               :message "`op` key is missing, no operation specified"}
              (xform/->event :error)))
 
@@ -66,15 +70,12 @@
 
     (not (subscribed? driver))
       (when (error-output? output-policy)
-        (->> {:type :not-subscribed
+        (->> {:type-name :not-subscribed
               :message (str "You must subscribe to a topic before issuing " op " command")}
              (xform/->event :error)))
     
     (= op :close)
       (do
-        ;; This will close the ctl-handler-ch as it is still attached
-        ;; to the ctl-ch via `a/tap`
-        (a/close! ctl-ch)
         (consumer/close! driver timeout)
         (xform/->event :control command))
 
@@ -83,7 +84,7 @@
         (consumer/unsubscribe! driver)
         (xform/->event :control command))
 
-    (= op :subscription)
+    (= op :subscriptions)
       (->> (consumer/subscription driver)
            (into [])
            (assoc command :subscriptions)
@@ -96,21 +97,22 @@
 
     (= op :partitions-for)
       (if topic
-        (->> (consumer/partitions-for driver topic)
+        (->> (name topic)
+             (consumer/partitions-for driver)
              (assoc command :partitions)
              (xform/->event :control))
-        (->> {:type :missing-topic
+        (->> {:type-name :missing-topic
               :message "`topic` is requred by `partitions-for` operation"}
              (xform/->event :error)))
 
     :else
-      (->> {:type :unknown-control-operation
+      (->> {:type-name :unknown-control-operation
             :message (str op " is an unknown control operation")}
            (xform/->event :error))))
 
 (defn processing-loop
-  "Creates loop for processing messages from Kafka `driver`"
-  [{:keys [out-ch ctl-handler-ch driver timeout output-policy] :as context}]
+  "Creates loop for processing messages from Kafka `driver`v"
+  [{:keys [out-ch ctl-ch ctl-mult ctl-handler-ch ctl-ready-ch driver timeout output-policy] :as context}]
   (a/go-loop []
     (let [{:keys [event data] :as result} (safe-poll context)]
       (case event
@@ -128,14 +130,18 @@
                                                   (a/timeout default-timeout) ([_] {:op :noop})
                                                   ctl-handler-ch ([r] r))
                        ctl-result (handle-control-event command context)]
+                   (println (str "Received Control Command, op: " op))
                    (when (and (control-output? output-policy) (not= op :noop))
                      (a/>! out-ch ctl-result))
                    (if (= op :close)
                      (do
                        (a/>! out-ch (xform/->event :eof))
-                       (consumer/close! driver timeout)
-                       (a/close! out-ch))
-                     (recur)))
+                       (a/close! out-ch)
+                       (close-tap ctl-mult ctl-handler-ch)
+                       (a/close! ctl-ch))
+                     (do
+                       (a/>! ctl-ready-ch true)
+                       (recur))))
 
         ;; If an exception was raised, it is turned into data and written to the output channel
         :error (do
@@ -145,30 +151,36 @@
 
 (defn wakeup-loop
   "Listens on tapped channel for control commands, waking up the Kafka client when a message is received"
-  [{:keys [driver ctl-mult ctl-wakeup-ch]}]
+  [{:keys [driver ctl-mult ctl-wakeup-ch ctl-ready-ch]}]
   (a/go-loop []
-    (when-let [{:keys [op]} (a/<! ctl-wakeup-ch)]
-      (consumer/wakeup! driver)
-      (if (= op :close)
-        (close-tap ctl-mult ctl-wakeup-ch)
-        (recur)))))
+    (when (a/<! ctl-ready-ch)
+      (println "Received control ready event...")
+      (when-let [{:keys [op]} (a/<! ctl-wakeup-ch)]
+        (println (str "Received control event, op: " op " - Waking Up..."))
+        (consumer/wakeup! driver)
+        (if (= op :close)
+          (do
+            (close-tap ctl-mult ctl-wakeup-ch)
+            (a/close! ctl-ready-ch))
+          (recur))))))
 
 (defn create-context
   "Builds context map containing all the necessary channels and channel connections"
-  [{:keys [input-buffer output-buffer timeout output-policy]
-    :or {input-buffer default-input-buffer
-         output-buffer default-output-buffer
+  [{:keys [output-buffer timeout output-policy]
+    :or {output-buffer default-output-buffer
          timeout default-timeout
          output-policy #{}}
     :as config}]
-  (let [ctl-ch (a/chan input-buffer)
+  (let [ctl-ch (a/chan)
         output-policy (conj output-policy :data)]
     {:driver (make-consumer config)
      :ctl-ch ctl-ch
+     :ctl-ready-ch (a/chan)
      :ctl-mult (a/mult ctl-ch)
-     :ctl-wakeup-ch (a/chan input-buffer)
-     :ctl-handler-ch (a/chan input-buffer)
+     :ctl-wakeup-ch (a/chan)
+     :ctl-handler-ch (a/chan)
      :out-ch (a/chan output-buffer)
+     :dbg-ch (a/chan output-buffer)
      :timeout timeout
      :output-policy output-policy}))
 
@@ -192,7 +204,9 @@
                      
                      The Kafka Java interface returns each of these as a Java object. Gregor converts each
                      to pure data (i.e. a map).
-  
+   `:topics`: Either a vector of topics, represented as strings or keywords or a single topic represented as a
+              string or keyword or a regex to match a set of topics.
+    
    `:timeout`: time to wait, in milliseconds, for queued message retrieval when closing the consumer.
   
    `:key-deserializer`: Serializer to use for key serialization, default is `:edn`.
@@ -200,8 +214,6 @@
   
    `:value-deserializer`: Serializer to use for value serialization, default is `:edn`.
                           Valid serializers are `:edn`, `:string` and `:json`
-  
-   `:input-buffer`: Buffer size of `:ctl-ch`, default is 10
   
    `:output-buffer`: Buffer size of `:out-ch`, default is 100
 
@@ -218,7 +230,6 @@
      :output-policy #{:control :error}
      :key-deserializer :string
      :value-deserializer :json
-     :input-buffer 20
      :output-buffer 50
      :timeout 100}`
 
@@ -226,9 +237,10 @@
    passed into the Kafka Java client as configuration options."
   
   [config]
-  (let [{:keys [ctl-mult ctl-wakeup-ch ctl-handler-ch] :as context} (create-context config)]
+  (let [{:keys [ctl-mult ctl-wakeup-ch ctl-handler-ch ctl-ready-ch] :as context} (create-context config)]
     (a/tap ctl-mult ctl-wakeup-ch)
     (a/tap ctl-mult ctl-handler-ch)
     (wakeup-loop context)
     (processing-loop context)
-    (select-keys context [:ctl-ch :out-ch])))
+    (a/>!! ctl-ready-ch true) ;; Tell the wake up loop that we are ready for the first control command
+    (select-keys context [:ctl-ch :out-ch :dbg-ch])))

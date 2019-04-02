@@ -12,6 +12,9 @@
                  [cheshire "5.8.1"]
                  [environ "1.1.0"]]
 
+  :test-selectors {:default (complement :integration)
+                   :integration :integration}
+  
   :profiles {:dev {:dependencies [[environ "1.1.0"]]
                    :env {:gregor-kafka-servers "localhost:9092"}}
 

@@ -22,34 +22,39 @@
 
 (defn input-loop
   "Starts the loop that processes input, waiting for the user to send input on `in` channel"
-  [{:keys [in-ch out-ch output-policy driver timeout] :as context}]
+  [{:keys [in-ch out-ch close-ch output-policy driver timeout] :as context}]
   (a/go-loop []
-    (if-let [message (a/<! in-ch)]
-      (let [result (process-input message driver output-policy)]
-        (when (and out-ch result)
-          (a/>! out-ch result))
-        (recur))
-      (producer/close! driver timeout))))
+    (let [close? (a/poll! close-ch)]
+      (when close?
+        (a/close! in-ch)
+        (a/close! close-ch))
+      (if-let [message (a/<! in-ch)]
+        (let [result (process-input message driver output-policy)]        
+          (when (and out-ch result)
+            (a/>! out-ch result))
+          (recur))
+        (do (producer/close! driver timeout)
+            (when out-ch
+              (a/>! out-ch (xform/->event :eof))
+              (a/close! out-ch)))))))
 
 (defn control-loop
   "Starts the loop that process control commands from the user"
-  [{:keys [in-ch ctl-ch out-ch driver output-policy]}]
+  [{:keys [in-ch ctl-ch out-ch close-ch driver output-policy]}]
   (a/go-loop []
     (when-let [{:keys [op topic] :as payload} (a/<! ctl-ch)]
       (cond
         (and (nil? op) (error-output? output-policy))
-          (a/>! out-ch (-> {:reason :missing-control-operation :description "`op` key is missing, no operation specified"}
-                           (xform/->event :error)))
+          (a/>! out-ch (->> {:type-name :missing-control-operation
+                             :message "`op` key is missing, no operation specified"}
+                            (xform/->event :error)))
 
         (= op :close)
           (let [ctl-msg (xform/->event :control payload)]
-            (a/close! in-ch)
             (a/close! ctl-ch)
             (when (control-output? output-policy)
-              (a/>! out-ch ctl-msg)
-              (a/>! out-ch (xform/->event :eof))) ;; send response before closing output channel            
-            (when out-ch
-              (a/close! out-ch)))
+              (a/>! out-ch ctl-msg))            
+            (a/>! close-ch true))
 
         (= op :flush)
           (let [ctl-msg (xform/->event :control payload)]
@@ -59,13 +64,16 @@
 
         (and (control-output? output-policy) (= op :partitions-for))
           (if topic
-            (a/>! out-ch (->> (producer/partitions-for driver topic) (xform/->event :control)))
+            (a/>! out-ch (->> (producer/partitions-for driver topic) (merge payload) (xform/->event :control)))
             (when (error-output? output-policy)
-              (a/>! out-ch (->> {:reason :missing-topic :description "`topic` is required by `partitions-for` operation"}
+              (a/>! out-ch (->> {:type-name :missing-topic
+                                 :message "`topic` is required by `partitions-for` operation"}
                                 (xform/->event :error)))))
 
         (error-output? output-policy)
-          (a/>! out-ch (->> {:name :invalid-control-operation :op op :message (str op " is not a valid control operation")}
+          (a/>! out-ch (->> {:type-name :invalid-control-operation
+                             :op op
+                             :message (str op " is not a valid control operation")}
                             (xform/->event :error))))
 
       (when (not= op :close)
@@ -83,6 +91,7 @@
         prod-out-ch (when (or (data-output? output-policy) (error-output? output-policy)) (a/chan output-buffer))]
     {:driver (make-producer config)
      :in-ch (if transducer (a/chan input-buffer transducer) (a/chan input-buffer))
+     :close-ch (a/chan)
      :ctl-ch (a/chan input-buffer)
      :ctl-out-ch ctl-out-ch
      :prod-out-ch prod-out-ch

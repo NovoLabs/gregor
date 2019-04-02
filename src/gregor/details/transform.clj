@@ -27,7 +27,7 @@
 (defn node->data
   "Convert an instance of `Node` into a map"
   [^Node n]
-  (merge   {:type :node
+  (merge   {:type-name :node
             :host (.host n)
             :id   (.id n)
             :port (long (.port n))}
@@ -37,7 +37,7 @@
 (defn partition-info->data
   "Convert an instance of `PartitionInfo` into a map"
   [^PartitionInfo pi]
-  {:type :partition-info
+  {:type-name :partition-info
    :isr (mapv node->data (.inSyncReplicas pi))
    :offline (mapv node->data (.offlineReplicas pi))
    :leader (node->data (.leader pi))
@@ -48,14 +48,14 @@
 (defn topic-partition->data
   "Convert an instance of `TopicPartition` into a map"
   [^TopicPartition tp]
-  {:type :topic-partition
+  {:type-name :topic-partition
    :topic (.topic tp)
    :partition (.partition tp)})
 
 (defn record-metadata->data
   "Convert an instance of `RecordMetadata` to a map"
   [^RecordMetadata record-metadata]
-  {:type :record-metadata
+  {:type-name :record-metadata
    :offset (.offset record-metadata)
    :partition (.partition record-metadata)
    :serialized-key-size (.serializedKeySize record-metadata)
@@ -66,7 +66,7 @@
 (defn exception->data
   "Convert a known exception to a map"
   [^Exception e]
-  {:type (cond
+  {:type-name (cond
            (instance? InterruptException e) :interrupt-exception
            (instance? SerializationException e) :serialization-exception
            (instance? TimeoutException e) :timeout-exception
@@ -80,7 +80,7 @@
 (defn timestamp-type->data
   "Convert an instance of `TimestampType` to a map"
   [^TimestampType tt]
-  {:type :timestamp-type
+  {:type-name :timestamp-type
    :name (.name tt)
    :id (.id tt)})
 
@@ -89,13 +89,13 @@
 (defn consumer-record->data
   "Yield a clojure representation of a consumer record"
   [^ConsumerRecord cr]
-  {:type :consumer-record
-   :key (.key cr)
+  {:type-name :consumer-record
+   :record-key (.key cr)
    :offset (.offset cr)
    :partition (.partition cr)
    :timestamp (.timestamp cr)
    :topic (.topic cr)
-   :value (.value cr)})
+   :record-value (.value cr)})
 
 (defn consumer-records->data
   "Yield the clojure representation of topic"
@@ -144,7 +144,7 @@
       (throw (ex-info "topics argument must be a string, keyword, regex or list of strings and/or keywords"
                       {:topics topics}))))
 
-(def valid-events #{:data :control :error})
+(def valid-events #{:data :control :error :eof})
 
 (defn ->event
   "Adds event information to the specified data (map)"

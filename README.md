@@ -57,7 +57,7 @@ user> (def ctl-ch (:ctl-ch consumer))
 
 There are a few things going on here which are worth a closer examination.  First, lets look at the configuration map passed to `gregor.consumer/create`.  It has a few different keys which are worth talking about:
 
-| *key* &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;&nbsp; &nbsp; &nbsp; &nbsp; &nbsp;&nbsp; &nbsp; &nbsp; &nbsp; &nbsp;| &nbsp; &nbsp; &nbsp; &nbsp; *value* &nbsp; &nbsp; &nbsp; &nbsp; | *notes* |
+| *key*<img width="200"> | *value*<img width="300" | *notes* |
 |:----- |:-------:|:------- |
 | `:output-policy` | `#{:data :control :error}` | Indicates which events will be sent to `out-ch`.  `:data` is not required as it is always sent for a consumer |
 

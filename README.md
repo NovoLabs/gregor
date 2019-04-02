@@ -51,14 +51,14 @@ Once that is done, assuming we have Kafka running on port 9092 on our local mach
 user> (def consumer (c/create {:output-policy #{:data :control :error}
                                :topics :gregor.test
                                :kafka-configuration {:bootstrap.servers "localhost:9092"
-						                             :group.id "gregor.consumer.test"}}))
-=> #'user/consumer
+                                                     :group.id "gregor.consumer.test"}}))
+;;=> #'user/consumer
 
 user> (def out-ch (:out-ch consumer))
-#'user/out-ch
+;;=> #'user/out-ch
 
 user> (def ctl-ch (:ctl-ch consumer)) 
-#'user/ctl-ch
+;;=> #'user/ctl-ch
 ```
 
 There are a few things going on here which warrant a closer examination.  First, lets look at the configuration map passed to `gregor.consumer/create`:

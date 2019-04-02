@@ -19,12 +19,18 @@ Gregor was inspired by [kinsky](https://github.com/pyr/kinsky) and [ring](https:
 
 Since Gregor is an interface to Kafka, using it requires that there is a Kafka instance set up.  To help you get up and running quickly, Gregor provides a `docker-compose.yaml` file that can be used to start up a local instance of Kafka.  Assuming you have [`docker-compose`](https://docs.docker.com/compose/install/) installed, you can copy [Gregor's docker compose file](https://github.com/NovoLabs/gregor/blob/master/docker/docker-compose.yaml) from GitHub to get a local instance of Kafka up and running.
 
+Assuming you have copied Gregor's `docker-compose.yaml` file to your local directory (and `docker-compose` is installed), you can start Kafka with the following command:
+
+```shell
+$ docker-compose up
+```
+
 ## Installation
 
 To install Gregor, add the following to your Leiningen `:dependencies` vector:
 
 ```clojure
-[[codes.novolabs/gregor "0.1.0"]]
+[codes.novolabs/gregor "0.1.0"]
 ```
 
 ## Usage
@@ -33,7 +39,7 @@ Gregor provides 2 interfaces: One for producing messages and the other for consu
 
 ### Consumer
 
-First, we are going to set up a basic consumer.  First we need to pull the consumer namespace into our REPL:
+To create a consumer, we first need to pull the consumer namespace into our REPL:
 
 ```clojure
 (require '[gregor.consumer :as c])
@@ -55,9 +61,9 @@ user> (def ctl-ch (:ctl-ch consumer))
 #'user/ctl-ch
 ```
 
-There are a few things going on here which are worth a closer examination.  First, lets look at the configuration map passed to `gregor.consumer/create`.  It has a few different keys which are worth talking about:
+There are a few things going on here which warrant a closer examination.  First, lets look at the configuration map passed to `gregor.consumer/create`:
 
-#### `:output-policy`
+*`:output-policy`*
 
 The value of `:output-policy` should be a set containing the list of events we want published to `out-ch`.  There are three types of events that Gregor publishes:
 

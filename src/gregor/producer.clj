@@ -11,8 +11,10 @@
   [message driver output-policy]
   (try
     (let [response (producer/send! driver message)]
+      ;; Derreferencing the `response` from Kafka blocks so we first test if the user
+      ;; requested data output from the producer before we dereference it.
       (when (data-output? output-policy)
-        (->> @response
+        (->> @response 
              xform/record-metadata->data
              (xform/->event :data))))
     (catch Exception e
@@ -20,23 +22,31 @@
         (->> (xform/exception->data e)
              (xform/->event :error))))))
 
+(defn close-handler
+  "Listens to `close-ch` for a `true` message.  When received, shuts down `in-ch` and `close-ch`"
+  [{:keys [in-ch close-ch]}]
+  (a/go
+    (when-let [close? (a/<! close-ch)]
+      (a/close! in-ch)
+      (a/close! close-ch))))
+
 (defn input-loop
   "Starts the loop that processes input, waiting for the user to send input on `in` channel"
   [{:keys [in-ch out-ch close-ch output-policy driver timeout] :as context}]
   (a/go-loop []
-    (let [close? (a/poll! close-ch)]
-      (when close?
-        (a/close! in-ch)
-        (a/close! close-ch))
-      (if-let [message (a/<! in-ch)]
-        (let [result (process-input message driver output-policy)]        
-          (when (and out-ch result)
-            (a/>! out-ch result))
-          (recur))
-        (do (producer/close! driver timeout)
-            (when out-ch
-              (a/>! out-ch (xform/->event :eof))
-              (a/close! out-ch)))))))
+    (if-let [message (a/<! in-ch)]
+      ;; We have recieved a message, which we process accordingly
+      (let [result (process-input message driver output-policy)]        
+        (when (and out-ch result)
+          (a/>! out-ch result))
+        (recur))
+      ;; Received `false`y from the `in-ch`, which indicates it is closed
+      ;; and all queued messages have been handled.  As such, we close down
+      ;; the producer and associated channels
+      (do (producer/close! driver timeout)
+          (when out-ch
+            (a/>! out-ch (xform/->event :eof))
+            (a/close! out-ch))))))
 
 (defn control-loop
   "Starts the loop that process control commands from the user"
@@ -51,9 +61,11 @@
 
         (= op :close)
           (let [ctl-msg (xform/->event :control payload)]
+            ;; We close the ctronly channel when we receive a `:close` operation. Any
+            ;; queued control operations will be ignored once we receive a `:close`.
             (a/close! ctl-ch)
             (when (control-output? output-policy)
-              (a/>! out-ch ctl-msg))            
+              (a/>! out-ch ctl-msg))
             (a/>! close-ch true))
 
         (= op :flush)
@@ -62,6 +74,9 @@
             (when (control-output? output-policy)
               (a/>! out-ch ctl-msg)))
 
+        ;; Partitions For operations is strictly an output operation.  It has no effect
+        ;; on the KafkaProducer instance state.  As such, if our output policy does not
+        ;; include control events, this operation is ignored.
         (and (control-output? output-policy) (= op :partitions-for))
           (if topic
             (a/>! out-ch (->> (producer/partitions-for driver topic) (merge payload) (xform/->event :control)))
@@ -155,6 +170,7 @@
 
   [config]
   (let [{:keys [output-policy] :as context} (create-context config)]
+    (close-handler context)
     (input-loop context)
     (control-loop context)
     (if (any-output? output-policy)

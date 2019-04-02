@@ -50,7 +50,7 @@ Once that is done, assuming we have Kafka running on port 9092 on our local mach
 ```clojure
 user> (def consumer (c/create {:output-policy #{:data :control :error}
                                :topics :gregor.test
-						       :kafka-configuration {:bootstrap.servers "localhost:9092"
+                               :kafka-configuration {:bootstrap.servers "localhost:9092"
 						                             :group.id "gregor.consumer.test"}}))
 => #'user/consumer
 

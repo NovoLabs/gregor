@@ -57,9 +57,9 @@ user> (def ctl-ch (:ctl-ch consumer))
 
 There are a few things going on here which are worth a closer examination.  First, lets look at the configuration map passed to `gregor.consumer/create`.  It has a few different keys which are worth talking about:
 
-| *key* | *value* | *notes* |
+| *key* <img width="200" height="0"/> | *value* | *notes* |
 |:----- |:-------:|:------- |
-| <img width="200" height="0"/> | <img width="300" height="0"/> | <img height="0"/> |
+|  | <img width="300" height="0"/> | <img height="0"/> |
 | `:output-policy` | `#{:data :control :error}` | Indicates which events will be sent to `out-ch`.  `:data` is not required as it is always sent for a consumer |
 
 The result of `gregor.consumer/create` is a map containing channels that will be used to interact with the consumer.  `out-ch` is the channel that receives all data events corresponding to the configured topic, `gregor.test` in this example.  The `out-ch` channel is also receives control and error events, provided the `output-policy` is configured to send those events.

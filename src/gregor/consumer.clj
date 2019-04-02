@@ -130,7 +130,6 @@
                                                   (a/timeout default-timeout) ([_] {:op :noop})
                                                   ctl-handler-ch ([r] r))
                        ctl-result (handle-control-event command context)]
-                   (println (str "Received Control Command, op: " op))
                    (when (and (control-output? output-policy) (not= op :noop))
                      (a/>! out-ch ctl-result))
                    (if (= op :close)
@@ -154,9 +153,7 @@
   [{:keys [driver ctl-mult ctl-wakeup-ch ctl-ready-ch]}]
   (a/go-loop []
     (when (a/<! ctl-ready-ch)
-      (println "Received control ready event...")
       (when-let [{:keys [op]} (a/<! ctl-wakeup-ch)]
-        (println (str "Received control event, op: " op " - Waking Up..."))
         (consumer/wakeup! driver)
         (if (= op :close)
           (do

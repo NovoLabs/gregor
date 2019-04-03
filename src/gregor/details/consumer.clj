@@ -4,7 +4,9 @@
             [gregor.details.deserializer :refer [->deserializer]])
   (:import org.apache.kafka.clients.consumer.KafkaConsumer
            java.util.concurrent.TimeUnit
-           org.apache.kafka.common.errors.WakeupException))
+           org.apache.kafka.common.errors.WakeupException
+           java.util.Collection
+           java.util.regex.Pattern))
 
 (defn reify-consumer-protocol
   "Create a reified implementation of a consumer, which includes ConsumerProtocol and SharedProtocol functions"
@@ -27,7 +29,10 @@
       (xform/consumer-records->data (.poll consumer timeout)))
 
     (subscribe! [_ topics]
-      (.subscribe consumer (xform/data->topics topics)))
+      (let [t (xform/data->topics topics)]
+        (if (vector? t)
+          (.subscribe ^KafkaConsumer consumer ^Collection t)
+          (.subscribe ^KafkaConsumer consumer ^Pattern t))))
 
     (unsubscribe! [_]
       (.unsubscribe consumer))

@@ -65,8 +65,12 @@
 
     (= op :subscribe)
       (let [t (or topics topic)]
-        (consumer/subscribe! driver t)
-        (xform/->event :control command))
+        (try
+          (consumer/subscribe! driver t)
+          (xform/->event :control command)
+          (catch IllegalStateException e
+            (->> (xform/exception->data e)
+                 (xform/->event :error)))))
 
     (not (subscribed? driver))
       (when (error-output? output-policy)

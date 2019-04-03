@@ -2,7 +2,7 @@
   (:import (java.lang IllegalStateException
                       IllegalArgumentException)
            (java.util Map
-                      Collection)
+                      )
            java.util.regex.Pattern
            org.apache.kafka.clients.consumer.OffsetAndMetadata
            (org.apache.kafka.common PartitionInfo
@@ -124,7 +124,7 @@
       :else
         (ProducerRecord. topic value))))
 
-(defn ^Collection data->topics
+(defn data->topics
   "Converts a topic or list of topics into a Collection of topics that KafkaConsumer understands"
   [topics]
   (cond

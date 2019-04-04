@@ -72,12 +72,6 @@
             (->> (xform/exception->data e)
                  (xform/->event :error)))))
 
-    (not (subscribed? driver))
-      (when (error-output? output-policy)
-        (->> {:type-name :not-subscribed
-              :message (str "You must subscribe to a topic before issuing " op " command")}
-             (xform/->event :error)))
-    
     (= op :close)
       (do
         (consumer/close! driver timeout)

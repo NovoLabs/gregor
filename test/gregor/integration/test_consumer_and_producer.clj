@@ -1,4 +1,4 @@
-(ns gregor.integration-test
+(ns gregor.integration.test-consumer-and-producer
   (:require [gregor.consumer :as c]
             [gregor.producer :as p]
             [clojure.core.async :as a]
@@ -165,15 +165,15 @@
     ;; Verify we have gotten a properly initialized consumer
     (is (contains? consumer :out-ch))
     (is (contains? consumer :ctl-ch))
-    
+
+    ;; Send control commands to the consumer
     (let [{:keys [ctl-ch]} consumer]
       (a/>!! ctl-ch {:op :noop})
       (a/>!! ctl-ch {:op :partitions-for :topic "gregor.test"})
       (a/>!! ctl-ch {:op :subscribe :topic "gregor.test"})
       (a/>!! ctl-ch {:op :partitions-for :topic "gregor.test"})
-      (a/>!! ctl-ch {:op :subscriptions})
-      (a/>!! ctl-ch {:op :close}))
-
+      (a/>!! ctl-ch {:op :subscriptions}))
+    
     (let [{:keys [in-ch ctl-ch]} producer]
       (a/>!! in-ch {:location-id 1 :pos-provider "ACME" :menu {:meat [:brisket :sausage]
                                                                :veggies {:house-salad :caesar}}})

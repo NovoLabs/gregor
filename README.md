@@ -208,6 +208,24 @@ user> (-> (a/<!! out-ch) pr-str println)
 ;;     :event :control}
 ```
 
+**`commit`**
+
+The `:commit` operation will commit the offsets from the last call to poll for the subscribed list of topics.  The default value of the `enable.auto.commit` property in Kafka is `true`, which means that as messages are consumed, the offset will be committed automatically (the interval of that auto commits is controlled by the `auto.commit.interval.ms` property which has a default value of `500`).  If you set `enable.auto.commit` to `false` when you create your consumer you will need to manually commit consumed offsets, which can be done with the following code:
+
+```clojure
+;; Commit the last consumed offset for this consumer
+user> (a/>!! ctl-ch {:op :commit})
+;; => true
+
+;; Verify that the `:commit` operation was processed succesfully
+user> (-> (a/<!! out-ch) pr-str println)
+;; => {:op :commit, :event :control}
+```
+
+Leaving `enable.auto.commit` set to the default value of `true` is sufficient for most use cases.  Read [this Medium article](https://medium.com/@danieljameskay/understanding-the-enable-auto-commit-kafka-consumer-property-12fa0ade7b65) for more information about auto committing and offsets.
+
+
+
 ## License
 
 Copyright © 2019 NovoLabs, Inc.

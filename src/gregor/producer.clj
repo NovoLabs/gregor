@@ -79,7 +79,7 @@
         ;; include control events, this operation is ignored.
         (and (control-output? output-policy) (= op :partitions-for))
           (if topic
-            (a/>! out-ch (->> (producer/partitions-for driver topic) (merge payload) (xform/->event :control)))
+            (a/>! out-ch (->> (name topic) (producer/partitions-for driver) (merge payload) (xform/->event :control)))
             (when (error-output? output-policy)
               (a/>! out-ch (->> {:type-name :missing-topic
                                  :message "`topic` is required by `partitions-for` operation"}

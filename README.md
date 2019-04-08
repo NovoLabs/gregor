@@ -51,10 +51,10 @@ To create a consumer, we first need to pull the consumer namespace into our REPL
 Assuming we have Kafka running on port 9092 on our local machine (the default location if we used the `docker-compose.yaml` file provided by Gregor), we can create a consumer connection using the following code:
 
 ```clojure
-user> (def consumer (c/create {:output-policy #{:data :control :error}
-                               :topics :gregor.test
-                               :kafka-configuration {:bootstrap.servers "localhost:9092"
-                                                     :group.id "gregor.consumer.test"}}))
+(def consumer (c/create {:output-policy #{:data :control :error}
+                         :topics :gregor.test
+                         :kafka-configuration {:bootstrap.servers "localhost:9092"
+                                               :group.id "gregor.consumer.test"}}))
 ;; => #'user/consumer
 ```
 
@@ -98,22 +98,22 @@ Assuming correct configuration, the result of calling `gregor.consumer/create` i
 For the sake of conveneince, lets bind `out-ch` to the output channel and `ctl-ch` to the control channel:
 
 ```clojure
-user> (def out-ch (:out-ch consumer))
+(def out-ch (:out-ch consumer))
 ;; => #'user/out-ch
 
-user> (def ctl-ch (:ctl-ch consumer)) 
+(def ctl-ch (:ctl-ch consumer)) 
 ;; => #'user/ctl-ch
 ```
 
 Now, lets check if we have been properly subscribed to the `gregor.test` topic.  We can query for the list of current subscriptions using the `:subscriptions` control operation.  The output will be written to `out-ch` as a `:control` event.  Here is the code:
 
 ```clojure
-user> (require '[clojure.core.async :as a])
+(require '[clojure.core.async :as a])
 
-user> (a/>!! ctl-ch {:op :subscriptions})
+(a/>!! ctl-ch {:op :subscriptions})
 ;; => true
 
-user> (-> (a/<!! out-ch) pr-str println)
+(-> (a/<!! out-ch) pr-str println)
 ;; => {:op :subscriptions, :subscriptions ["gregor.test"], :event :control}
 ```
 
@@ -129,28 +129,28 @@ The code to call `:subscribe` looks like this:
 
 ```clojure
 ;; Subscribe to `:gregor.test.2`
-user> (a/>!! ctl-ch {:op :subscribe :topics :gregor.test.2})
+(a/>!! ctl-ch {:op :subscribe :topics :gregor.test.2})
 ;; => true
 
 ;; Print the output from the `:subscribe` control operation
-user> (-> (a/<!! out-ch) pr-str println)
+(-> (a/<!! out-ch) pr-str println)
 ;; => {:op :subscribe, :topics :gregor.test.2, :event :control}
 
 ;; Query for the list of current subscriptions using the `:subscriptions` operation
-user> (a/>!! ctl-ch {:op :subscriptions})
+(a/>!! ctl-ch {:op :subscriptions})
 ;; => true
 
 ;; Print the output of the `:subscriptions` operation, noting that we are
 ;; now subscribed to the "gregor.test.2" topic
-user> (-> (a/<!! out-ch) pr-str println)
+(-> (a/<!! out-ch) pr-str println)
 ;; => {:op :subscriptions, :subscriptions ["gregor.test.2"], :event :control}
 
 ;; Switch subscription back to "gregor.test"
-user> (a/>!! ctl-ch {:op :subscribe :topics :gregor.test})
+(a/>!! ctl-ch {:op :subscribe :topics :gregor.test})
 ;; => true
 
 ;; Print the output of the `:subscribe` command
-user> (-> (a/<!! out-ch) pr-str println)
+(-> (a/<!! out-ch) pr-str println)
 ;; => {:op :subscribe, :topics :gregor.test, :event :control}
 ```
 
@@ -160,11 +160,11 @@ The `:subscriptions` operation, as we have seen, is used to get the list of topi
 
 ```clojure
 ;; Query for the list of current subscriptions using the `:subscriptions` operation
-user> (a/>!! ctl-ch {:op :subscriptions})
+(a/>!! ctl-ch {:op :subscriptions})
 ;; => true
 
 ;; Print the output of the `:subscriptions` operation
-user> (-> (a/<!! out-ch) pr-str println)
+(-> (a/<!! out-ch) pr-str println)
 ;; => {:op :subscriptions, :subscriptions ["gregor.test"], :event :control}
 ```
 
@@ -176,11 +176,11 @@ The `:unsubscribe` operation will unsubscribe the consumer from all current topi
 
 ```clojure
 ;; Unsubscribe from the current topic
-user> (a/>!! ctl-ch {:op :unsubscribe})
+(a/>!! ctl-ch {:op :unsubscribe})
 ;; => true
 
 ;; Print the output of the `:unsubscribe` operation
-user> (-> (a/<!! out-ch) pr-str println)
+(-> (a/<!! out-ch) pr-str println)
 ;; => {:op :unsubscribe, :event :control}
 ```
 
@@ -192,11 +192,11 @@ The `:partitions-for` operation will fetch the partition information for the spe
 
 ```clojure
 ;; Query the partitions for the `:gregor.test` topic
-user> (a/>!! ctl-ch {:op :partitions-for :topic :gregor.test})
+(a/>!! ctl-ch {:op :partitions-for :topic :gregor.test})
 ;; => true
 
 ;; Print the output of the `:partitions-for` operation for the `:gregor.test` topic
-user> (-> (a/<!! out-ch) pr-str println)
+(-> (a/<!! out-ch) pr-str println)
 ;; => {:op :partitions-for, 
 ;;     :topic :gregor.test, 
 ;;     :partitions [{:type-name :partition-info, 
@@ -215,11 +215,11 @@ The `:commit` operation will commit the offsets from the last call to poll for t
 
 ```clojure
 ;; Commit the last consumed offset for this consumer
-user> (a/>!! ctl-ch {:op :commit})
+(a/>!! ctl-ch {:op :commit})
 ;; => true
 
 ;; Verify that the `:commit` operation was processed succesfully
-user> (-> (a/<!! out-ch) pr-str println)
+(-> (a/<!! out-ch) pr-str println)
 ;; => {:op :commit, :event :control}
 ```
 
@@ -231,19 +231,19 @@ The `:close` operation will close the consumer, including all associated channel
 
 ```clojure
 ;; Close the consumer
-user> (a/>!! ctl-ch {:op :close})
+(a/>!! ctl-ch {:op :close})
 ;; true
 
 ;; Verify the `:close` operation was processed
-user> (-> (a/<!! out-ch) pr-str println)
+(-> (a/<!! out-ch) pr-str println)
 ;; => {:op :close, :event :control}
 
 ;; Should receive `:eof` event as the final event indicating the end of the stream/channel
-user> (-> (a/<!! out-ch) pr-str println)
+(-> (a/<!! out-ch) pr-str println)
 ;; => {:event :eof}
 
 ;; Further reads result in `nil` as the `out-ch` is closed
-user> (-> (a/<!! out-ch) pr-str println)
+(-> (a/<!! out-ch) pr-str println)
 ;; => nil
 
 ;; Attempts to write to the `ctl-ch` will fail, returning `false`
@@ -260,8 +260,8 @@ Note that the final message deliverd from `out-ch` was the `:eof` event.  Postin
 The other half of the equation is the producer.  Gregor provides a namespace called `gregor.producer` for creating and interacting with a KafkaProducer object.  The following code can be used to create a producer:
 
 ```clojure
-user> (def producer (p/create {:output-policy #{:data :control :error}
-                               :kafka-configuration {:bootstrap.servers "localhost:9092"}}))
+(def producer (p/create {:output-policy #{:data :control :error}
+                         :kafka-configuration {:bootstrap.servers "localhost:9092"}}))
 ;; => #'user/producer
 ```
 
@@ -295,10 +295,10 @@ Assuming correct configuration, the result of calling `gregor.producer/create` i
 For the sake of conveneince, `out-ch` to the output channel and `ctl-ch` to the control channel:
 
 ```clojure
-user> (def out-ch (:out-ch producer))
+(def out-ch (:out-ch producer))
 ;; => #'user/out-ch
 
-user> (def ctl-ch (:ctl-ch producer))
+(def ctl-ch (:ctl-ch producer))
 ;; => #'user/ctl-ch
 ```
 
@@ -310,11 +310,11 @@ The `:partitions-for` operation will fetch the partition information for the spe
 
 ```clojure
 ;; Query the partitions for the `:gregor.test` topic
-user> (a/>!! ctl-ch {:op :partitions-for :topic :gregor.test})
+(a/>!! ctl-ch {:op :partitions-for :topic :gregor.test})
 ;; => true
 
 ;; Print the output of the `:partitions-for` operation for the `:gregor.test` topic
-user> (-> (a/<!! out-ch) pr-str println)
+(-> (a/<!! out-ch) pr-str println)
 ;; => {:op :partitions-for, 
 ;;     :topic :gregor.test, 
 ;;     :partitions [{:type-name :partition-info, 
@@ -333,11 +333,11 @@ Invoking the `:flush` operation will make all buffered records immediately avail
 
 ```clojure
 ;; Invoke flush via the control channel
-user> (a/>!! ctl-ch {:op :flush})
+(a/>!! ctl-ch {:op :flush})
 ;; => true
 
 ;; Print the output of the `:flush` operation
-user> (-> (a/<!! out-ch) pr-str println)
+(-> (a/<!! out-ch) pr-str println)
 ;; => {:op :flush, :event-ctl}
 ```
 
@@ -347,27 +347,27 @@ The `:close` operation will close the producer, including all associated channel
 
 ```clojure
 ;; Close the consumer
-user> (a/>!! ctl-ch {:op :close})
+(a/>!! ctl-ch {:op :close})
 ;; true
 
 ;; Verify the `:close` operation was processed
-user> (-> (a/<!! out-ch) pr-str println)
+(-> (a/<!! out-ch) pr-str println)
 ;; => {:op :close, :event :control}
 
 ;; Should receive `:eof` event as the final event indicating the end of the stream/channel
-user> (-> (a/<!! out-ch) pr-str println)
+(-> (a/<!! out-ch) pr-str println)
 ;; => {:event :eof}
 
 ;; Further reads result in `nil` as the `out-ch` is closed
-user> (-> (a/<!! out-ch) pr-str println)
+(-> (a/<!! out-ch) pr-str println)
 ;; => nil
 
 ;; Attempts to write to the `ctl-ch` will fail, returning `false`
-user> (a/>!! ctl-ch {:op :subscriptions})
+(a/>!! ctl-ch {:op :subscriptions})
 ;; => false
 
 ;; Attempts to write to the `in-ch` will fail, returning `false`
-user> (a/>!! (:in-ch producer) {:foo :bar})
+(a/>!! (:in-ch producer) {:foo :bar})
 ;; => false
 ```
 
@@ -381,11 +381,11 @@ Now that we have seen how to create and work with a consumer and producer in iso
 
 ```clojure
 ;; Close the consumer
-user> (-> (:ctl-ch consumer) (a/>!! {:op :close}))
+(-> (:ctl-ch consumer) (a/>!! {:op :close}))
 ;; => true
 
 ;; Close the producer
-user> (-> (:ctl-ch :producer) (a/>!! {:op :close}))
+(-> (:ctl-ch :producer) (a/>!! {:op :close}))
 ;; => true
 ```
 
@@ -393,15 +393,15 @@ Once the old consumer and producer are closed, we can create new instances of a 
 
 ```clojure
 ;; Create a consumer, subscribed to the `:gregor.test.send` topic
-user> (def consumer (c/create {:output-policy #{:data :control :error}
-                               :topics :gregor.test.send
-                               :kafka-configuration {:bootstrap.servers "localhost:9092"
-                                                     :group.id "gregor.consumer.test"}}))
+(def consumer (c/create {:output-policy #{:data :control :error}
+                         :topics :gregor.test.send
+                         :kafka-configuration {:bootstrap.servers "localhost:9092"
+                                               :group.id "gregor.consumer.test"}}))
 ;; => #'user/consumer
 
 ;; Create a producer
-user> (def producer (p/create {:output-policy #{:control :error}
-                               :kafka-configuration {:bootstrap.servers "localhost:9092"}}))
+(def producer (p/create {:output-policy #{:control :error}
+                         :kafka-configuration {:bootstrap.servers "localhost:9092"}}))
 ;; => #'user/producer
 ```
 
@@ -411,23 +411,23 @@ Now that we have a valid consumer and producer, we can send messages between the
 
 ```clojure
 ;; Bind a symbol to the input channel of the producer
-user> (def in-ch (:in-ch producer))
+(def in-ch (:in-ch producer))
 ;; => #'user/in-ch
 
 ;; Bind a symbol to the output channel of the consumer
-user> (def out-ch (:out-ch consumer))
+(def out-ch (:out-ch consumer))
 ;; => #'user/out-ch
 
-;; Create message body
-user> (def msg {:topic :gregor.test.send :message-key {:uuid (str (java.util.UUID/randomUUID))} :message-value {:a 1 :b 2}})
+;; Create message body (we will examine this closer in the next section)
+(def msg {:topic :gregor.test.send :message-key {:uuid (str (java.util.UUID/randomUUID))} :message-value {:a 1 :b 2}})
 ;; => #'user/msg
 
 ;; Write data to the producer
-user> (a/>!! in-ch msg)
+(a/>!! in-ch msg)
 ;; => true
 
 ;; Read the message from the consumer
-user> (a/<!! out-ch)
+(a/<!! out-ch)
 ;; => {:message-key {:uuid "5380d92d-5997-4515-99ed-1717bf21a01e"},
 ;;     :offset 2,
 ;;     :message-value-size 12,
@@ -440,7 +440,62 @@ user> (a/<!! out-ch)
 ;;     :timestamp 1554751618612}
 ```
 
-As you may have noticed, the message we get out of the consumer has a bit more information than what we passed into the producer.  This is because Gregor includes all of the data provided by the [Kafka ConsumerRecord](https://kafka.apache.org/21/javadoc/org/apache/kafka/clients/consumer/ConsumerRecord.html) object.  Most of the time, we will only be interested in the `:message-key` and `:message-value` keys, which contain the message data.
+As you may have noticed, the message we get out of the consumer has a bit more information than what we passed into the producer.  This is because Gregor includes all of the data provided by the Kafka [`ConsumerRecord`](https://kafka.apache.org/21/javadoc/org/apache/kafka/clients/consumer/ConsumerRecord.html) object.  Most of the time, we will only be interested in the `:message-key` and `:message-value` keys, which contain the data.
+
+### Anatomy of a Message
+
+As promised, lets look a little closer at the keys and values of a message body.  There are 2 required keys, the `:topic` which contains a string or keyword containing the message's target topic, and the `:message-value`, which is the data that we want to send.  Additionally, there are 2 optional keys.  The first is `:message-key` which is arbitrary metadata about the `:message-value`.  The second is `:partition`, which is a valid partition index of the topic where the message should be delivered.
+
+All messages must contain a `:topic` and a `:message-value`.  We consider it good practice to also include a `:message-key` with each message, though it is not required by Kafka or Gregor.  Generally speaking, we try to avoid specifying a partition as Kafka is usually better about distributing work across available partitions.  However, if you have a good reason, you can target a specific partition within the specified topic.
+
+### Producer Transducer
+
+Gregor supports producer transducers.  This feature allows the user to specify a transducer that will be attached to the input channel of a producer when that producer is created.  This transducer will be applied to each message sent to the input channel before it is serialized as a Kafka [`ProducerRecord`](https://kafka.apache.org/21/javadoc/org/apache/kafka/clients/producer/ProducerRecord.html).
+
+In this example, we will use a transducer to derive the `:message-key` and `:message-value` from the map that is passed into the input channel.  In addition, the transducer will add a `:producer-timestamp` to the `:message-value` for use by the consumer:
+
+```clojure
+;; Close the previous producer
+(a/>!! ctl-ch {:op :close})
+;; => true
+
+;; Function to add a `:producer-timestamp`
+(defn add-timestamp
+  [m]
+  (assoc m :producer-timestamp (System/currentTimeMillis)))
+
+;; Function to set the `:message-value`
+(defn add-message-value
+  [m]
+  (->> (dissoc m :uuid)
+       (assoc m :message-value)))
+
+;; Function to set the `:message-key`
+(defn add-message-key
+  [{:keys [uuid] :as m}]
+  (-> (assoc m :message-key {:uuid uuid})
+      (dissoc :uuid)))
+
+;; Function to set the `:topic`
+(defn add-topic
+  [topic m]
+  (assoc m :topic topic))
+	   
+;; Compose the transducer
+(def transducer (compose (map add-timestamp)
+                         (map add-message-value)
+                         (map add-message-key)
+                         (map (partial add-topic :gregor.test.send))))
+```
+
+In addition to adding some meta-data about the message, this transducer transforms the message into something that Gregor can understand.  Every message that passes through the input channel will come out the other side with a `:topic`, a `:message-value` and a `:message-key`, guarenteeing that all messages are correctly shaped.
+
+(As a side note, since the `:message-key` is not required, one possible enhancement to the transducer is to leave out the `:message-key` if no UUID is found in the map.  Alternatively, we could generate a UUID and include it in the message, similar to how we generated a timestamp.  The correct answer to these types of questions will largely be contextual to the problem that is being solved.  Suffice to say, Gregor's ability to accept a user-defined transducer should facilitate an elegant implementation regardless of what the requirements dictate.)
+
+Now that we have our transducer, lets put it to work:
+
+```clojure
+```
 
 ## License
 

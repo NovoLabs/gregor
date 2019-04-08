@@ -260,8 +260,9 @@ Note that the final message deliverd from `out-ch` was the `:eof` event.  Postin
 The other half of the equation is the producer.  Gregor provides a namespace called `gregor.producer` for creating and interacting with a KafkaProducer object.  The following code can be used to create a producer:
 
 ```clojure
-(def producer (p/create {:output-policy #{:data :control :error}
-                         :kafka-configuration {:bootstrap.servers "localhost:9092"}}))
+user> (def producer (p/create {:output-policy #{:data :control :error}
+                               :kafka-configuration {:bootstrap.servers "localhost:9092"}}))
+;; => #'user/producer
 ```
 
 As with the consumer, the configuration map we passed to `gregor.producer/create` is worth a closer look:
@@ -373,6 +374,73 @@ user> (a/>!! (:in-ch producer) {:foo :bar})
 Not only was the `KafkaProducer` object closed, but so were `in-ch`, `out-ch` and `ctl-ch` channels.  Since `out-ch` is a standard `core.async` channel, all messages that were read from the producer up to the point of the `:close` operation will be avialable.  Once `out-ch` is empty, it wil return `nil` for all future reads.  Any attempts to write to `ctl-ch` will fail, returning `false` as shown above.
 
 Note that the final message deliverd from `out-ch` was the `:eof` event.  Posting an `:eof` event is Gregor's way of telling the user that the stream has been closed.
+
+### Sending and Receiving Data
+
+Now that we have seen how to create and work with a consumer and producer in isolation, it is time for them to work together to send some data across a Kafka topic.  If you have not already done so, close the consumer and producer that you created above.  You can us the following code to do so:
+
+```clojure
+;; Close the consumer
+user> (-> (:ctl-ch consumer) (a/>!! {:op :close}))
+;; => true
+
+;; Close the producer
+user> (-> (:ctl-ch :producer) (a/>!! {:op :close}))
+;; => true
+```
+
+Once the old consumer and producer are closed, we can create new instances of a consumer and a producer which we will use to send a message via Kafka:
+
+```clojure
+;; Create a consumer, subscribed to the `:gregor.test.send` topic
+user> (def consumer (c/create {:output-policy #{:data :control :error}
+                               :topics :gregor.test.send
+                               :kafka-configuration {:bootstrap.servers "localhost:9092"
+                                                     :group.id "gregor.consumer.test"}}))
+;; => #'user/consumer
+
+;; Create a producer
+user> (def producer (p/create {:output-policy #{:control :error}
+                               :kafka-configuration {:bootstrap.servers "localhost:9092"}}))
+;; => #'user/producer
+```
+
+A couple of things to note here.  First, we subscribed to a different topic than in the previous consumer example.  This is simply to make sure there are no messages hanging out on a previously existing topic and we are starting with a clean slate.  Second, we removed the `:data` event from the `:output-policy` for the producer.  This will keep Gregor from dereferencing the result of the call to `.send`, thus maintaining the asynchronous-ness of message production.
+
+Now that we have a valid consumer and producer, we can send messages between them:
+
+```clojure
+;; Bind a symbol to the input channel of the producer
+user> (def in-ch (:in-ch producer))
+;; => #'user/in-ch
+
+;; Bind a symbol to the output channel of the consumer
+user> (def out-ch (:out-ch consumer))
+;; => #'user/out-ch
+
+;; Create message body
+user> (def msg {:topic :gregor.test.send :message-key {:uuid (str (java.util.UUID/randomUUID))} :message-value {:a 1 :b 2}})
+;; => #'user/msg
+
+;; Write data to the producer
+user> (a/>!! in-ch msg)
+;; => true
+
+;; Read the message from the consumer
+user> (a/<!! out-ch)
+;; => {:message-key {:uuid "5380d92d-5997-4515-99ed-1717bf21a01e"},
+;;     :offset 2,
+;;     :message-value-size 12,
+;;     :topic "gregor.test.send",
+;;     :message-key-size 46,
+;;     :partition 0,
+;;     :message-value {:a 1, :b 2},
+;;     :event :data,
+;;     :type-name :consumer-record,
+;;     :timestamp 1554751618612}
+```
+
+As you may have noticed, the message we get out of the consumer has a bit more information than what we passed into the producer.  This is because Gregor includes all of the data provided by the [Kafka ConsumerRecord](https://kafka.apache.org/21/javadoc/org/apache/kafka/clients/consumer/ConsumerRecord.html) object.  Most of the time, we will only be interested in the `:message-key` and `:message-value` keys, which contain the message data.
 
 ## License
 

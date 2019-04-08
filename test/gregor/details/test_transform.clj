@@ -105,8 +105,8 @@
           leader-epoch (System/currentTimeMillis)
           consumer-record (ConsumerRecord. "gregor.test" 1 104 timestamp timestamp-type
                                            123456 123 456 "key" "value")
-          data {:type-name :consumer-record :record-key "key" :record-value "value" :offset 104
-                :partition 1 :topic "gregor.test" :timestamp timestamp}]
+          data {:type-name :consumer-record :message-key "key" :message-value "value" :offset 104
+                :partition 1 :topic "gregor.test" :timestamp timestamp :message-value-size 456 :message-key-size 123}]
       (is (= data (t/consumer-record->data consumer-record)))))
 
   (testing "consumer-records->data"
@@ -122,31 +122,32 @@
                                  (conj [])
                                  (java.util.ArrayList.))
           consumer-records (ConsumerRecords. {topic-partition-1 consumer-record-1 topic-partition-2 consumer-record-2})
-          data [{:type-name :consumer-record :record-key "key" :record-value "value" :offset 104
-                 :partition 1 :timestamp timestamp :topic "gregor.test"}
-                {:type-name :consumer-record :record-key "key" :record-value "value" :offset 99
-                 :partition 2 :timestamp timestamp :topic "gregor.test"}]]
+          data [{:type-name :consumer-record :message-key "key" :message-value "value" :offset 104
+                 :partition 1 :timestamp timestamp :topic "gregor.test" :message-key-size 123 :message-value-size 456}
+                {:type-name :consumer-record :message-key "key" :message-value "value" :offset 99
+                 :partition 2 :timestamp timestamp :topic "gregor.test" :message-key-size 123 :message-value-size 456}]]
       (is (= data (t/consumer-records->data consumer-records))))))
 
 (deftest data-to-object-converters
   (testing "data->producer-record"
-    (let [producer-record (t/data->producer-record {:topic "gregor.test" :value "value"})]
+    (let [producer-record (t/data->producer-record {:topic "gregor.test" :message-value "value"})]
       (is (= (.topic producer-record) "gregor.test"))
       (is (= (.value producer-record) "value")))
 
-    (let [producer-record (t/data->producer-record {:topic "gregor.test" :key "key" :value "value"})]
+    (let [producer-record (t/data->producer-record {:topic "gregor.test" :message-key "key" :message-value "value"})]
       (is (= (.topic producer-record) "gregor.test"))
       (is (= (.key producer-record) "key"))
       (is (= (.value producer-record) "value")))
 
-    (let [producer-record (t/data->producer-record {:topic "gregor.test" :partition 1 :key "key" :value "value"})]
+    (let [producer-record (t/data->producer-record {:topic "gregor.test" :partition 1
+                                                    :message-key "key" :message-value "value"})]
       (is (= (.partition producer-record) 1))
       (is (= (.topic producer-record) "gregor.test"))
       (is (= (.key producer-record) "key"))
       (is (= (.value producer-record) "value")))
 
     (is (thrown? ExceptionInfo (t/data->producer-record {:topic "gregor.test"})))
-    (is (thrown? ExceptionInfo (t/data->producer-record {:value "value"})))))
+    (is (thrown? ExceptionInfo (t/data->producer-record {:message-value "value"})))))
 
 (deftest data-to-data
   (testing "data->topics"

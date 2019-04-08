@@ -90,12 +90,14 @@
   "Yield a clojure representation of a consumer record"
   [^ConsumerRecord cr]
   {:type-name :consumer-record
-   :record-key (.key cr)
+   :message-key (.key cr)
+   :message-key-size (.serializedKeySize cr)
    :offset (.offset cr)
    :partition (.partition cr)
    :timestamp (.timestamp cr)
    :topic (.topic cr)
-   :record-value (.value cr)})
+   :message-value (.value cr)
+   :message-value-size (.serializedValueSize cr)})
 
 (defn consumer-records->data
   "Yield the clojure representation of topic"
@@ -106,23 +108,23 @@
 
 (defn data->producer-record
   "Build a `ProducerRecord` object from a clojure map.  No-Op if `payload` is already a `ProducerRecord`"
-  [{:keys [partition key value topic] :as data}]
+  [{:keys [partition message-key message-value topic] :as data}]
   (let [topic (some-> topic name)]
     (cond
       (nil? topic)
         (throw (ex-info "`:topic` is a required parameter" {}))
 
-      (or (nil? value) (empty? value))
+      (or (nil? message-value) (empty? message-value))
         (throw (ex-info "`:value` is required and must not be empty" {:topic topic}))
       
-      (and key partition)
-        (ProducerRecord. topic (int partition) key value)
+      (and message-key partition)
+        (ProducerRecord. topic (int partition) message-key message-value)
 
-      key
-        (ProducerRecord. topic key value)
+      message-key
+        (ProducerRecord. topic message-key message-value)
 
       :else
-        (ProducerRecord. topic value))))
+        (ProducerRecord. topic message-value))))
 
 (defn data->topics
   "Converts a topic or list of topics into a Collection of topics that KafkaConsumer understands"
@@ -144,13 +146,13 @@
       (throw (ex-info "topics argument must be a string, keyword, regex or list of strings and/or keywords"
                       {:topics topics}))))
 
-(def valid-events #{:data :control :error :eof})
+(def valid-events? #{:data :control :error :eof})
 
 (defn ->event
   "Adds event information to the specified data (map)"
   ([event]
    (->event event {}))
   ([event data]
-   (if (valid-events event)
+   (if (valid-events? event)
      (assoc data :event event)
-     (throw (ex-info "invalid event" {:event event :valid-events valid-events})))))
+     (throw (ex-info "invalid event" {:event event :valid-events valid-events?})))))

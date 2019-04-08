@@ -446,23 +446,19 @@ As you may have noticed, the message we get out of the consumer has a bit more i
 
 As promised, lets look a little closer at the keys and values of a message body.  There are 2 required keys, the `:topic` which contains a string or keyword containing the message's target topic, and the `:message-value`, which is the data that we want to send.  Additionally, there are 2 optional keys.  The first is `:message-key` which is arbitrary metadata about the `:message-value`.  The second is `:partition`, which is a valid partition index of the topic where the message should be delivered.
 
-All messages must contain a `:topic` and a `:message-value`.  We consider it good practice to also include a `:message-key` with each message, though it is not required by Kafka or Gregor.  Generally speaking, we try to avoid specifying a partition as Kafka is usually better about distributing work across available partitions.  However, if you have a good reason, you can target a specific partition within the specified topic.
+All messages must contain a `:topic` and a `:message-value`.  We consider it good practice to also include a `:message-key` with each message, though it is not required by Kafka or Gregor.  Generally speaking, we try to avoid specifying a partition and let Kafka handle distributing the work across available partitions.  However, if you have a good reason, you can target a specific partition within the specified topic.
 
 ### Producer Transducer
 
-Gregor supports producer transducers.  This feature allows the user to specify a transducer that will be attached to the input channel of a producer when that producer is created.  This transducer will be applied to each message sent to the input channel before it is serialized as a Kafka [`ProducerRecord`](https://kafka.apache.org/21/javadoc/org/apache/kafka/clients/producer/ProducerRecord.html).
+Gregor supports producer transducers.  This feature allows the user to specify a transducer that will be attached to the input channel of a producer when upon creation.  The transducer will be applied to each message sent to the input channel before it is serialized as a Kafka [`ProducerRecord`](https://kafka.apache.org/21/javadoc/org/apache/kafka/clients/producer/ProducerRecord.html).
 
 In this example, we will use a transducer to derive the `:message-key` and `:message-value` from the map that is passed into the input channel.  In addition, the transducer will add a `:producer-timestamp` to the `:message-value` for use by the consumer:
 
 ```clojure
-;; Close the previous producer
-(a/>!! ctl-ch {:op :close})
-;; => true
-
 ;; Function to add a `:producer-timestamp`
 (defn add-timestamp
   [m]
-  (assoc m :producer-timestamp (System/currentTimeMillis)))
+  (assoc m :producer-timestamp (.toEpochMilli (java.time.Instant/now)))
 
 ;; Function to set the `:message-value`
 (defn add-message-value
@@ -482,20 +478,52 @@ In this example, we will use a transducer to derive the `:message-key` and `:mes
   (assoc m :topic topic))
 	   
 ;; Compose the transducer
-(def transducer (compose (map add-timestamp)
-                         (map add-message-value)
-                         (map add-message-key)
-                         (map (partial add-topic :gregor.test.send))))
+(def transducer (comp (map add-timestamp)
+                      (map add-message-value)
+                      (map add-message-key)
+                      (map (partial add-topic :gregor.test.send))))
 ```
 
 In addition to adding some meta-data about the message, this transducer transforms the message into something that Gregor can understand.  Every message that passes through the input channel will come out the other side with a `:topic`, a `:message-value` and a `:message-key`, guarenteeing that all messages are correctly shaped.
 
-(As a side note, since the `:message-key` is not required, one possible enhancement to the transducer is to leave out the `:message-key` if no UUID is found in the map.  Alternatively, we could generate a UUID and include it in the message, similar to how we generated a timestamp.  The correct answer to these types of questions will largely be contextual to the problem that is being solved.  Suffice to say, Gregor's ability to accept a user-defined transducer should facilitate an elegant implementation regardless of what the requirements dictate.)
+(As a side note, since the `:message-key` is not required, one possible enhancement to the transducer is to leave out the `:message-key` if no UUID is found in the map.
+
+Alternatively, we could generate a UUID if one is not found, similar to how we generated a timestamp.  
+
+The correct answer to these types of questions will largely be contextual to the problem that is being solved.  Suffice to say, Gregor's ability to accept a user-defined transducer should facilitate an elegant implementation regardless of what the requirements dictate.)
 
 Now that we have our transducer, lets put it to work:
 
 ```clojure
+;; Close the previous producer
+(a/>!! ctl-ch {:op :close})
+;; => true
+
+;; Create a new producer with the above defined transducer
+(def producer (p/create {:output-policy #{:control :error}
+                         :kafka-configuration {:bootstrap.servers "localhost:9092"}
+						 :transducer transducer}))
+;; => #'user/producer
+
+;; Send data to the producer.  Note that we have not specified the `:topic` or the `:message-value`.
+(a/>!! (:in-ch producer) {:uuid (java.util.UUID/randomUUID) :a 1 :b 2 :c 3})
+;; => true
+
+;; Read the message from the consumer
+(a/<!! out-ch)
+;; => {:message-key {:uuid #uuid "fd32a035-153d-4fe8-837e-d5bd33985cd0"},
+;;     :offset 3,
+;;     :message-value-size 53,
+;;     :topic "gregor.test.send",
+;;     :message-key-size 52,
+;;     :partition 0,
+;;     :message-value {:a 1, :b 2, :c 3, :producer-timestamp 1554755327399},
+;;     :event :data,
+;;     :type-name :consumer-record,
+;;     :timestamp 1554755327411}
 ```
+
+As you can see, the transducer was applied to input channel of the producer, resulting in a correctly shaped message which was then read off of the topic by the consumer.
 
 ## License
 

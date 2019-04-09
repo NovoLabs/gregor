@@ -9,16 +9,10 @@
   :dependencies [[org.clojure/clojure "1.10.0"]
                  [org.clojure/core.async "0.4.490"]
                  [org.apache.kafka/kafka-clients "2.1.0"]
-                 [cheshire "5.8.1"]
-                 [environ "1.1.0"]]
+                 [camel-snake-kebab "0.4.0"]
+                 [cheshire "5.8.1"]]
 
   :test-selectors {:default (complement :integration)
                    :integration :integration}
   
-  :profiles {:dev {:dependencies [[environ "1.1.0"]]
-                   :env {:gregor-kafka-servers "localhost:9092"}}
-
-             :test {:dependencies [[environ "1.1.0"]]
-                    :env {:gregor-kafka-servers "localhost:9092"}}
-
-             :uberjar {:aot :all}})
+  :profiles {:uberjar {:aot :all}})

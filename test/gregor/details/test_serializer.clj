@@ -1,4 +1,4 @@
-(ns gregor.details.test-deserializer
+(ns gregor.details.test-serializer
   (:require [gregor.details.deserializer :as des]
             [gregor.details.serializer :as ser]
             [cheshire.core :as json]

@@ -1,4 +1,4 @@
-(ns gregor.integration.test-consumer-and-producer
+(ns gregor.integration.test-producer-transducer
   (:require [gregor.consumer :as c]
             [gregor.producer :as p]
             [clojure.core.async :as a]
@@ -12,8 +12,8 @@
 (defn key-value-split
   "Sub-divides map `m` into a key and a value"
   [m]
-  {:key (select-keys m [:location-id :pos-provider])
-   :value (select-keys m [:menu :timestamp])})
+  {:message-key (select-keys m [:location-id :pos-provider])
+   :message-value (select-keys m [:menu :timestamp])})
 
 (defn add-topic
   "Adds `topic` to map `m`"
@@ -147,7 +147,7 @@
 
         event))))
 
-(deftest ^:integration end-to-end
+(deftest ^:integration producer-transducer
   (let [consumer (c/create {:output-policy #{:data :control :error}
                             :kafka-configuration {:bootstrap.servers "localhost:9092"
                                                   :group.id "gregor.consumer.test"}

@@ -1,22 +1,16 @@
 (ns gregor.details.transform
-  (:import (java.lang IllegalStateException
-                      IllegalArgumentException)
-           (java.util Map
-                      )
+  (:require [camel-snake-kebab.core :as csk])
+  (:import java.util.Map
            java.util.regex.Pattern
            org.apache.kafka.clients.consumer.OffsetAndMetadata
            (org.apache.kafka.common PartitionInfo
                                     Node)
-           (org.apache.kafka.common KafkaException
-                                    TopicPartition)
+           org.apache.kafka.common.TopicPartition
            (org.apache.kafka.clients.producer RecordMetadata
                                               ProducerRecord)
            (org.apache.kafka.clients.consumer ConsumerRecord
                                               ConsumerRecords)
-           (org.apache.kafka.common.errors InterruptException
-                                           SerializationException
-                                           TimeoutException)
-           (org.apache.kafka.common.record TimestampType)))
+           org.apache.kafka.common.record.TimestampType))
 
 (defn ^Map opts->props
   "Kafka configuration requres a map of string to string.
@@ -63,17 +57,18 @@
    :timestamp (.timestamp record-metadata)
    :topic (.topic record-metadata)})
 
+(defn exception-type-name
+  [e]
+  (-> (class e)
+      str
+      (clojure.string/split #"\.")
+      last
+      csk/->kebab-case-keyword))
+
 (defn exception->data
   "Convert a known exception to a map"
   [^Exception e]
-  {:type-name (cond
-           (instance? InterruptException e) :interrupt-exception
-           (instance? SerializationException e) :serialization-exception
-           (instance? TimeoutException e) :timeout-exception
-           (instance? KafkaException e) :kafka-exception
-           (instance? IllegalStateException e) :illegal-state-exception
-           (instance? IllegalArgumentException e) :illegal-argument-exception
-           :else :unknown-exception)
+  {:type-name (exception-type-name e)
    :stack-trace (->> (.getStackTrace e) seq (into []))
    :message (.getMessage e)})
 
@@ -103,8 +98,9 @@
   "Yield the clojure representation of topic"
   [^ConsumerRecords crs]
   (let [partitions (.partitions crs)]
-    (-> (for [^TopicPartition p partitions] (mapv consumer-record->data (.records crs p)))
-        flatten)))
+    (-> (for [^TopicPartition p partitions] (map consumer-record->data (.records crs p)))
+        flatten
+        vec)))
 
 (defn data->producer-record
   "Build a `ProducerRecord` object from a clojure map.  No-Op if `payload` is already a `ProducerRecord`"

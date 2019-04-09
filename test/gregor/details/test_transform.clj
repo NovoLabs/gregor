@@ -76,6 +76,22 @@
                 :serialized-key-size 123 :serialized-value-size 456 :timestamp timestamp}]
       (is (= data (t/record-metadata->data record-metadata)))))
 
+  (testing "exception-type-name"
+    (let [illegal-state (IllegalStateException. "illegal state")
+          illegal-argument (IllegalArgumentException. "illegal argument")
+          kafka (KafkaException. "kafka")
+          timeout (TimeoutException. "timeout")
+          serialization (SerializationException. "serialization")
+          interrupt (InterruptException. "interrupt")
+          exception (Exception. "exception")]
+      (is (= :illegal-state-exception (t/exception-type-name illegal-state)))
+      (is (= :illegal-argument-exception (t/exception-type-name illegal-argument)))
+      (is (= :kafka-exception (t/exception-type-name kafka)))
+      (is (= :timeout-exception (t/exception-type-name timeout)))
+      (is (= :serialization-exception (t/exception-type-name serialization)))
+      (is (= :interrupt-exception (t/exception-type-name interrupt)))
+      (is (= :exception (t/exception-type-name exception)))))
+  
   ;; These tests do not test the contents of `:stack-trace`, only that it exists.  We
   ;; are making an assumption here that it will be set properly when the exception is received.
   (testing "exception->data"
@@ -85,14 +101,14 @@
           timeout (-> (TimeoutException. "timeout") t/exception->data)
           serialization (-> (SerializationException. "serialization") t/exception->data)
           interrupt (-> (InterruptException. "interrupt") t/exception->data)
-          unknown (-> (Exception. "unknown") t/exception->data)]
+          exception (-> (Exception. "exception") t/exception->data)]
       (is (valid-exception? illegal-state :illegal-state-exception))
       (is (valid-exception? illegal-argument :illegal-argument-exception))
       (is (valid-exception? kafka :kafka-exception))
       (is (valid-exception? timeout :timeout-exception))
       (is (valid-exception? serialization :serialization-exception))
       (is (valid-exception? interrupt :interrupt-exception))
-      (is (valid-exception? unknown :unknown-exception))))
+      (is (valid-exception? exception :exception))))
 
   (testing "timestamp-type->data"
     (let [timestamp-type TimestampType/LOG_APPEND_TIME

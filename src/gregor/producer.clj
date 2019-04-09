@@ -1,6 +1,7 @@
 (ns gregor.producer
   (:require [gregor.details.producer :refer [make-producer]]
             [gregor.details.transform :as xform]
+            [gregor.details.transducer :refer [ex-handler]]
             [gregor.details.protocols.producer :as producer]
             [gregor.defaults :refer [default-input-buffer default-output-buffer default-timeout]]
             [gregor.output-policy :refer [data-output? control-output? error-output? any-output?]]
@@ -105,7 +106,7 @@
   (let [ctl-out-ch (when (control-output? output-policy) (a/chan output-buffer))
         prod-out-ch (when (or (data-output? output-policy) (error-output? output-policy)) (a/chan output-buffer))]
     {:driver (make-producer config)
-     :in-ch (if transducer (a/chan input-buffer transducer) (a/chan input-buffer))
+     :in-ch (if transducer (a/chan input-buffer transducer ex-handler) (a/chan input-buffer))
      :close-ch (a/chan)
      :ctl-ch (a/chan input-buffer)
      :ctl-out-ch ctl-out-ch

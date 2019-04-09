@@ -97,39 +97,6 @@
   (is (contains? payload :timestamp))
   true)
 
-(def consumer-control-ops #{:noop :subscribe :unsubscribe :subscriptions :close :commit :partitions-for})
-
-(defn validate-consumer-control
-  [{:keys [event op] :as payload}]
-  (is (consumer-control-ops op))
-  (case op
-    :close (is (= event :control))
-
-    :noop (is (= event :control))
-
-    :subscribe (let [{:keys [topic]} payload]
-                 (is (= topic "gregor.test")))
-
-    :unsubscribe (is (= event :control))
-
-    :subscriptions (let [{:keys [subscriptions]} payload]
-                     (is (not-empty subscriptions)))
-
-    :commit (is (= event :control))
-
-    :partitions-for (let [partitions (:partitions payload)]
-                      (is (= event :control))
-                      (is (vector? partitions))
-                      (is (not-empty partitions))
-                      (is (every? #(= (:type-name %) :partition-info) partitions))
-                      (is (every? #(contains? % :isr) partitions))
-                      (is (every? #(contains? % :offline) partitions))
-                      (is (every? #(contains? % :leader) partitions))
-                      (is (every? #(contains? % :partition) partitions))
-                      (is (every? #(contains? % :replicas) partitions))
-                      (is (every? #(contains? % :topic) partitions))))
-  true)
-
 (defn consumer-output-test-loop
   "Gets output from the consumer output channel and tests its validity"
   [{:keys [out-ch]}]
@@ -139,8 +106,7 @@
         :data (do (validate-consumer-data payload)
                   (recur))
 
-        :control (do (validate-consumer-control payload)
-                     (recur))
+        :control (recur)
 
         :error (do (validate-error payload)
                    (recur))
@@ -167,13 +133,6 @@
     (is (contains? consumer :ctl-ch))
 
     ;; Send control commands to the consumer
-    (let [{:keys [ctl-ch]} consumer]
-      (a/>!! ctl-ch {:op :noop})
-      (a/>!! ctl-ch {:op :partitions-for :topic "gregor.test"})
-      (a/>!! ctl-ch {:op :subscribe :topic "gregor.test"})
-      (a/>!! ctl-ch {:op :partitions-for :topic "gregor.test"})
-      (a/>!! ctl-ch {:op :subscriptions}))
-    
     (let [{:keys [in-ch ctl-ch]} producer]
       (a/>!! in-ch {:location-id 1 :pos-provider "ACME" :menu {:meat [:brisket :sausage]
                                                                :veggies {:house-salad :caesar}}})

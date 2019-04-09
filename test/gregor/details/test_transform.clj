@@ -90,8 +90,7 @@
       (is (= :timeout-exception (t/exception-type-name timeout)))
       (is (= :serialization-exception (t/exception-type-name serialization)))
       (is (= :interrupt-exception (t/exception-type-name interrupt)))
-      (is (= :exception (t/exception-type-name exception)))
-      ))
+      (is (= :exception (t/exception-type-name exception)))))
   
   ;; These tests do not test the contents of `:stack-trace`, only that it exists.  We
   ;; are making an assumption here that it will be set properly when the exception is received.

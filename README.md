@@ -36,6 +36,116 @@ To install Gregor, add the following to your Leiningen `:dependencies` vector:
 [codes.novolabs/gregor "0.1.0"]
 ```
 
+## TL;DR Examples
+
+If you want to get started quickly, here are some self-contained examples that you can copy-pasta into your REPL.
+
+### Simple Message Production and Consumption
+
+```clojure
+(require '[clojure.core.async :as a])
+(require '[gregor.consumer :as c])
+(require '[gregor.producer :as p])
+
+;; Create a consumer
+(def consumer (c/create {:output-policy #{:data :control :error}
+                         :kafka-configuration {:bootstrap.servers "localhost:9092"
+                                               :group.id "gregor.consumer.test"}
+                         :topics :gregor.test}))
+
+;; Create a producer
+(def producer (p/create {:output-policy #{:error}
+                         :kafka-configuration {:bootstrap.servers "localhost:9092"}}))
+
+;; Bind the input channel of the producer to `in-ch`
+(def in-ch (:in-ch producer))
+
+;; Bind the output channel of the consumer to `out-ch`
+(def out-ch (:out-ch consumer))
+
+;; Create a go-loop to print messages received on the output channel of the consumer
+(a/go-loop []
+  (when-let [msg (a/<! out-ch)]
+    (println (pr-str msg))
+    (recur)))
+
+;; Post 2 messages to the input channel of the producer
+(a/>!! in-ch {:topic :gregor.test :message-value {:a 1 :b 2}})
+(a/>!! in-ch {:topic :gregor.test :message-value {:a 3 :b 4}})
+
+;; Close the producer
+(a/>!! (:ctl-ch producer) {:op :close})
+
+;; Close the consumer
+(a/>!! (:ctl-ch consumer) {:op :close})
+```
+
+### Producer Transducer
+
+```clojure
+(require '[clojure.core.async :as a])
+(require '[gregor.consumer :as c])
+(require '[gregor.producer :as p])
+
+;; Function to add a `:producer-timestamp`
+(defn add-timestamp
+  [m]
+  (assoc m :producer-timestamp (.toEpochMilli (java.time.Instant/now)))
+
+;; Function to set the `:message-value`
+(defn add-message-value
+  [m]
+  (->> (dissoc m :uuid)
+       (assoc m :message-value)))
+
+;; Function to set the `:message-key`
+(defn add-message-key
+  [{:keys [uuid] :as m :or {uuid (java.util.UUID/randomUUID)}}]
+  (-> (assoc m :message-key {:uuid uuid})
+      (dissoc :uuid)))
+
+;; Function to set the `:topic`
+(defn add-topic
+  [topic m]
+  (assoc m :topic topic))
+	   
+;; Compose the transducer which will reshape the message into something
+;; that the Gregor producer understands
+(def transducer (comp (map add-timestamp)
+                      (map add-message-value)
+                      (map add-message-key)
+                      (map (partial add-topic :gregor.test.send))))
+
+;; Create a consumer
+(def consumer (c/create {:output-policy #{:data :control :error}
+                         :kafka-configuration {:bootstrap.servers "localhost:9092"
+                                               :group.id "gregor.consumer.test"}
+                         :topics :gregor.test}))
+
+;; Create a producer with the transducer from above
+(def producer (p/create {:output-policy #{:error}
+                         :kafka-configuration {:bootstrap.servers "localhost:9092"}
+						 :transducer transducer}))
+
+;; Bind the input channel of the producer to `in-ch`
+(def in-ch (:in-ch producer))
+
+;; Bind the output channel of the consumer to `out-ch`
+(def out-ch (:out-ch consumer))
+
+;; Post 2 messages to the input channel of the producer.  Note that they
+;; are not currently of the correct shape.  The transducer on the input
+;; channel will handle this for us
+(a/>!! in-ch {:a 1 :b 2})
+(a/>!! in-ch {:a 3 :b 4})
+
+;; Close the producer
+(a/>!! (:ctl-ch producer) {:op :close})
+
+;; Close the consumer
+(a/>!! (:ctl-ch consumer) {:op :close})
+```
+
 ## Usage
 
 Gregor provides 2 namespaces public namespaces: `gregor.consumer` for creating and using a KafkaConsumer and `gregor.producer` for creating and using a KafkaProducer.
@@ -292,7 +402,7 @@ Assuming correct configuration, the result of calling `gregor.producer/create` i
 * `:out-ch` - The channel that receives all events, including `:data`, `:control`, `:error` and `:eof`
 * `:ctl-ch` - The channel used to send control operations
 
-For the sake of conveneince, `out-ch` to the output channel and `ctl-ch` to the control channel:
+For the sake of conveneince, lets bind `out-ch` to the output channel and `ctl-ch` to the control channel:
 
 ```clojure
 (def out-ch (:out-ch producer))
@@ -523,7 +633,21 @@ Now that we have our transducer, lets put it to work:
 ;;     :timestamp 1554755327411}
 ```
 
-As you can see, the transducer was applied to input channel of the producer, resulting in a correctly shaped message which was then read off of the topic by the consumer.
+As you can see, the transducer was applied to the input channel of the producer, resulting in a correctly shaped message which was then read off of the topic by the consumer.
+
+## TODO List
+
+#### Transducer Exception Handling
+
+Channels with transducers support having an exception handling function.  Need to create one so that any exceptions that a transducer throws are caught and converted to `:error` events.  In the case of the consumer, the event will automatically be sent to the `out-ch`.  In the case of the producer, the transducer is on the `in-ch` so Gregor will need to recognize that an error ocurred (by checking the event type) and route it to the producer's `out-ch`.
+
+#### Exception handling for control events
+
+Review the exceptions that the various `KafkaProducer` and `KafkaConsumer` methods can throw.  Make sure that Gregor has exception handling for each.  The exception handling should convert the exception to an `:error` event and post it to the `out-ch` of the consumer or producer.  Additionally, in the context of the consumer, the consumer control loop must be left in a correct state.  That is, after the exception is handled and routed correctly, a message needs to be sent to the `ctl-ready-ch` indicating that the control loop is ready for the next control operation.
+
+#### Enhance `:commit` Control Operation
+
+Currently, the `:commit` control operation takes no parameters.  It simply forces a commit to happen for all partitions for each of the currently subscribed topics.  To facilitate a finer control for the user over commits, the `:commit` operation should be able to target specific partitions of specific topics with specific offsets.  Doing so will allow the user to disable auto-commits and be explicit about committing when a message is handled.
 
 ## License
 

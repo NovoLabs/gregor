@@ -1,4 +1,4 @@
-(ns gregor.integration.test-consumer-and-producer
+(ns gregor.integration.test-producer-transducer
   (:require [gregor.consumer :as c]
             [gregor.producer :as p]
             [clojure.core.async :as a]
@@ -147,7 +147,7 @@
 
         event))))
 
-(deftest ^:integration end-to-end
+(deftest ^:integration producer-transducer
   (let [consumer (c/create {:output-policy #{:data :control :error}
                             :kafka-configuration {:bootstrap.servers "localhost:9092"
                                                   :group.id "gregor.consumer.test"}

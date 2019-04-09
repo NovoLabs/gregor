@@ -1,6 +1,7 @@
 (ns gregor.consumer
   (:require [gregor.details.consumer :refer [make-consumer]]
             [gregor.details.transform :as xform]
+            [gregor.details.transducer :refer [ex-handler]]
             [gregor.details.protocols.consumer :as consumer]
             [gregor.defaults :refer [default-output-buffer default-timeout]]
             [gregor.output-policy :refer [data-output? control-output? error-output? any-output?]]
@@ -15,7 +16,7 @@
 
 (defn safe-poll
   "Polls for data arriving from Kafka, catching appropriate exceptions to dispatch control events"
-  [{:keys [driver timeout output-policy dbg-ch]}]
+  [{:keys [driver timeout output-policy]}]
   (try
     (->> (consumer/poll! driver 2000)
          (map #(xform/->event :data %))
@@ -26,21 +27,17 @@
       ;; function that is thread safe is `.wakeup` which triggers a wake up exception.  Gregor uses `.wakeup`
       ;; to force the Kafka consumer out of a blocking poll in order to handle a control event.  This call
       ;; is made in the go-loop created by `wakeup-loop` function.
-      (a/>!! dbg-ch "caught WakeupException")
       (xform/->event :control))
     (catch IllegalStateException _
       ;; This exception is thrown when we call `.poll!` without being subscribed to any topics.  We handle it
       ;; here and return it as a control event.  This will allow us to handle control events prior to being
       ;; subscribed to a topic.  Most important, we can handle the control command to `subscribe`.
-      (a/>!! dbg-ch "caught IllegalStateException")
       (xform/->event :control))
     (catch ConcurrentModificationException e
       ;; This should not happen.  If it does, there is a bug in Gregor and we propogate the exception
-      (a/>!! dbg-ch "caugh ConcurrentModificationException")
       (throw e))
     (catch Exception e
       ;; All other exceptions are converted to data and returned
-      (a/>!! dbg-ch "caught Exception")
       (->> (xform/exception->data e)
            (xform/->event :error)))))
 
@@ -161,7 +158,7 @@
 
 (defn create-context
   "Builds context map containing all the necessary channels and channel connections"
-  [{:keys [output-buffer timeout output-policy]
+  [{:keys [output-buffer timeout output-policy transducer]
     :or {output-buffer default-output-buffer
          timeout default-timeout
          output-policy #{}}
@@ -174,8 +171,7 @@
      :ctl-mult (a/mult ctl-ch)
      :ctl-wakeup-ch (a/chan)
      :ctl-handler-ch (a/chan)
-     :out-ch (a/chan output-buffer)
-     :dbg-ch (a/chan output-buffer)
+     :out-ch (if transducer (a/chan output-buffer transducer ex-handler) (a/chan output-buffer))
      :timeout timeout
      :output-policy output-policy}))
 
@@ -238,4 +234,4 @@
     (wakeup-loop context)
     (processing-loop context)
     (a/>!! ctl-ready-ch true) ;; Tell the wake up loop that we are ready for the first control command
-    (select-keys context [:ctl-ch :out-ch :dbg-ch])))
+    (select-keys context [:ctl-ch :out-ch])))

@@ -12,8 +12,8 @@
 (defn key-value-split
   "Sub-divides map `m` into a key and a value"
   [m]
-  {:key (select-keys m [:location-id :pos-provider])
-   :value (select-keys m [:menu :timestamp])})
+  {:message-key (select-keys m [:location-id :pos-provider])
+   :message-value (select-keys m [:menu :timestamp])})
 
 (defn add-topic
   "Adds `topic` to map `m`"

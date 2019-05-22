@@ -44,7 +44,8 @@
       ;; Received `false`y from the `in-ch`, which indicates it is closed
       ;; and all queued messages have been handled.  As such, we close down
       ;; the producer and associated channels
-      (do (producer/close! driver timeout)
+      (do (producer/flush! driver)
+          (producer/close! driver timeout)
           (when out-ch
             (a/>! out-ch (xform/->event :eof))
             (a/close! out-ch))))))

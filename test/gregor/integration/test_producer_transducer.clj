@@ -46,7 +46,8 @@
 (deftest ^:integration producer-transducer
   (let [consumer (c/create {:output-policy #{:data :control :error}
                             :kafka-configuration {:bootstrap.servers "localhost:9092"
-                                                  :group.id "gregor.consumer.test"}
+                                                  :group.id "gregor.consumer.test"
+                                                  :auto.offset.reset "earliest"}
                             :topics :gregor.test.producertransducer})
         producer (p/create {:output-policy #{:data :control :error}
                             :kafka-configuration {:bootstrap.servers "localhost:9092"}

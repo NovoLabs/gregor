@@ -15,5 +15,10 @@
   :test-selectors {:default (complement :integration)
                    :integration :integration
                    :all (constantly true)}
+
+  :release-tasks [["vcs" "assert-committed"]
+                  ["v" "update"] ;; compute new version & tag it
+                  ["v" "push-tags"]
+                  ["deploy"]]
   
   :profiles {:uberjar {:aot :all}})

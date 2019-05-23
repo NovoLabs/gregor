@@ -1,7 +1,7 @@
 (defproject gregor "0.1.0"
-  :description "FIXME: write description"
+  :description "Clojure client library for sending and receiving messages via Kafka"
 
-  :url "http://example.com/FIXME"
+  :url "https://github.com/NovoLabs/gregor"
 
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}

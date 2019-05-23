@@ -1,4 +1,4 @@
-(defproject gregor "0.1.0"
+(defproject novolabs/gregor "0.1.0"
   :description "Clojure client library for sending and receiving messages via Kafka"
 
   :url "https://github.com/NovoLabs/gregor"
@@ -19,6 +19,6 @@
   :release-tasks [["vcs" "assert-committed"]
                   ["v" "update"] ;; compute new version & tag it
                   ["v" "push-tags"]
-                  ["deploy"]]
+                  ["deploy" "clojars"]]
   
   :profiles {:uberjar {:aot :all}})

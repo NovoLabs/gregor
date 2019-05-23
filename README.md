@@ -51,7 +51,7 @@ If you want to get started quickly, here are some self-contained examples that y
 (def consumer (c/create {:output-policy #{:data :control :error}
                          :kafka-configuration {:bootstrap.servers "localhost:9092"
                                                :group.id "gregor.consumer.test"
-											   :auto.offset.reset "earliest"}
+                                               :auto.offset.reset "earliest"}
                          :topics :gregor.test}))
 
 ;; Create a producer
@@ -121,7 +121,7 @@ If you want to get started quickly, here are some self-contained examples that y
 (def consumer (c/create {:output-policy #{:data :control :error}
                          :kafka-configuration {:bootstrap.servers "localhost:9092"
                                                :group.id "gregor.consumer.test"
-											   :auto.offset.reset "earliest"}
+                                               :auto.offset.reset "earliest"}
                          :topics :gregor.test}))
 
 ;; Create a producer with the transducer from above

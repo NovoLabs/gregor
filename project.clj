@@ -13,6 +13,7 @@
                  [cheshire "5.8.1"]]
 
   :test-selectors {:default (complement :integration)
-                   :integration :integration}
+                   :integration :integration
+                   :all (constantly true)}
   
   :profiles {:uberjar {:aot :all}})

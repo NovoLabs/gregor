@@ -33,7 +33,7 @@ $ docker-compose up
 To install Gregor, add the following to your Leiningen `:dependencies` vector:
 
 ```clojure
-[codes.novolabs/gregor "0.1.0"]
+[novolabsoss/gregor "0.1.0"]
 ```
 
 ## TL;DR Examples

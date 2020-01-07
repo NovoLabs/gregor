@@ -1,4 +1,4 @@
-(defproject novolabsoss/gregor "0.1.0"
+(defproject novolabsoss/gregor "0.1.1"
   :description "Clojure client library for sending and receiving messages via Kafka"
 
   :url "https://github.com/NovoLabs/gregor"

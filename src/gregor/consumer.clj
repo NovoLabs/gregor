@@ -107,14 +107,15 @@
 
 (defn processing-loop
   "Creates loop for processing messages from Kafka `driver`v"
-  [{:keys [out-ch ctl-ch ctl-mult ctl-handler-ch ctl-ready-ch driver timeout output-policy] :as context}]
+  [{:keys [out-ch ctl-ch ctl-mult ctl-handler-ch ctl-ready-ch output-policy] :as context}]
   (a/go-loop []
     (let [{:keys [event data] :as result} (safe-poll context)]
       (case event
         ;; Copy all of the data onto `out-ch`. The `false` parameter indicates
         ;; the channel should be kept open after all items have been read
         :data (do
-                (a/onto-chan out-ch data false)
+                ;; `onto-chan` returns a channel that is closed when the copying completes
+                (a/<! (a/onto-chan out-ch data false))
                 (recur))
 
         ;; Read the control event off of `ctl-handler-ch`, using `a/alt!` to prevent
